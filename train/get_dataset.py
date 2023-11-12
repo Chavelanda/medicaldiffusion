@@ -1,4 +1,4 @@
-from dataset import MRNetDataset, BRATSDataset, ADNIDataset, DUKEDataset, LIDCDataset, DEFAULTDataset
+from dataset import MRNetDataset, BRATSDataset, ADNIDataset, DUKEDataset, LIDCDataset, DEFAULTDataset, SKULLBREAKDataset
 from torch.utils.data import WeightedRandomSampler
 
 
@@ -39,10 +39,18 @@ def get_dataset(cfg):
             root_dir=cfg.dataset.root_dir, augmentation=True)
         sampler = None
         return train_dataset, val_dataset, sampler
+    if cfg.dataset.name == 'SKULL-BREAK':
+        train_dataset = SKULLBREAKDataset(
+            root_dir=cfg.dataset.root_dir)
+        val_dataset = SKULLBREAKDataset(
+            root_dir=cfg.dataset.root_dir)
+        sampler = None
+        return train_dataset, val_dataset, sampler
     if cfg.dataset.name == 'DEFAULT':
         train_dataset = DEFAULTDataset(
             root_dir=cfg.dataset.root_dir)
         val_dataset = DEFAULTDataset(
             root_dir=cfg.dataset.root_dir)
         sampler = None
+        return train_dataset, val_dataset, sampler
     raise ValueError(f'{cfg.dataset.name} Dataset is not available')

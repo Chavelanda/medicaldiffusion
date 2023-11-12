@@ -1,0 +1,3 @@
+name: SKULL-BREAK
+root_dir: /data/skull-break/train/nrdd/complete-skull/
+image_channels: 1

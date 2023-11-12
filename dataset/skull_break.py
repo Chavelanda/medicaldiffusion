@@ -39,5 +39,5 @@ if __name__ == '__main__':
     print("Shape of the item:", item['data'].shape)
 
     # Display a channel of the item as an image
-    plt.imshow(item['data'][200], cmap='gray')
+    plt.imshow(item['data'].squeeze(0)[200], cmap='gray')
     plt.show()

@@ -69,9 +69,16 @@ def run(cfg: DictConfig):
                 print('will start from the recent ckpt %s' %
                       cfg.model.resume_from_checkpoint)
 
-    accelerator = None
+    # select accelerator
+    accelerator = 'cpu'
+    if cfg.model.gpus > 0:
+        accelerator = 'gpu'
     if cfg.model.gpus > 1:
         accelerator = 'ddp'
+
+    # create wandb logger
+    wandb_logger = pl.loggers.WandbLogger(
+        name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity)
 
     trainer = pl.Trainer(
         gpus=cfg.model.gpus,
@@ -84,6 +91,7 @@ def run(cfg: DictConfig):
         precision=cfg.model.precision,
         gradient_clip_val=cfg.model.gradient_clip_val,
         accelerator=accelerator,
+        logger=wandb_logger,
     )
 
     trainer.fit(model, train_dataloader, val_dataloader)

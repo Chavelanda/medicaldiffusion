@@ -277,8 +277,8 @@ model_func_weights = {
     'resnet200': [resnet200, 'resnet_200.pth'],
 }
 
-def pretrained_resnet_fid(resnet_func, pretrained_path, **kwargs):
-    """Constructs a pretrained ResNet model to be used for FID computation"""
+def pretrained_resnet_gap(resnet_func, pretrained_path, **kwargs):
+    """Constructs a pretrained ResNet model with GAP as last layer."""
 
     # Instantiating the model
     model = model_func_weights[resnet_func][0](**kwargs)

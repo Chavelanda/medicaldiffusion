@@ -4,8 +4,6 @@ import numpy as np
 from scipy import linalg
 from tqdm import tqdm
 
-from fid.medicalnet import pretrained_resnet_fid
-
 def compute_summary_stats(x):
     mu = np.mean(x, axis=0)
     sigma = np.cov(x, rowvar=False)

@@ -1,0 +1,1 @@
+from medicalnet.medicalnet import pretrained_resnet_gap

@@ -7,9 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-import math
 from functools import partial
-from pathlib import Path
 
 __all__ = [
     'ResNet', 'resnet10', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -217,7 +215,6 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-        print(x.shape)
         x = self.conv_seg(x)
 
         return x
@@ -287,7 +284,7 @@ def pretrained_resnet_fid(resnet_func, pretrained_path, **kwargs):
     model = model_func_weights[resnet_func][0](**kwargs)
 
     # Adding GAP as last layer
-    model.conv_seg = nn.AdaptiveAvgPool3d(1)
+    model.conv_seg = nn.Sequential(nn.AdaptiveAvgPool3d(1), nn.Flatten())
 
     # Loading the pretrained weights
     path = pretrained_path + model_func_weights[resnet_func][1]

@@ -158,3 +158,6 @@ data/
 
 # Pretrained models
 pretrain/
+
+# Stats
+stats/

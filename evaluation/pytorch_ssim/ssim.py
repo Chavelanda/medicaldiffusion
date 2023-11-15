@@ -197,7 +197,7 @@ def msssim(img1, img2, window_size=11, size_average=True, val_range=None, normal
 
 # Uses ssim_exact, i.e. numpy arrays in cpu
 # Why is it using that function and not 3dssim?
-def msssim_3d(img1, img2, window_size=11, size_average=True, val_range=None, normalize=False):
+def msssim_3d(img1, img2, window_size=11, size_average=True, val_range=None, normalize=False, tensor=False):
     device = img1.device
     weights = torch.FloatTensor(
         [0.0448, 0.2856, 0.3001, 0.2363, 0.1333]).to(device)
@@ -205,7 +205,10 @@ def msssim_3d(img1, img2, window_size=11, size_average=True, val_range=None, nor
     mssim = []
     mcs = []
     for _ in range(levels):
-        sim, cs = ssim_exact(img1.data.cpu().numpy(), img2.data.cpu().numpy())
+        if tensor:
+            sim, cs = ssim_3d(img1, img2, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+        else:
+            sim, cs = ssim_exact(img1.data.cpu().numpy(), img2.data.cpu().numpy())
         mssim.append(sim)
         mcs.append(cs)
 

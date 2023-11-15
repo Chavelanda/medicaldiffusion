@@ -23,7 +23,7 @@ class SKULLBREAKDataset(Dataset):
 
         img = torch.from_numpy(img)
 
-        img = img.unsqueeze(0)
+        img = img.unsqueeze(0).float()
 
         return {'data': img}
 

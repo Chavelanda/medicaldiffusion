@@ -156,3 +156,5 @@ outputs/
 # Data dir
 data/
 
+# Pretrained models
+pretrain/

@@ -277,7 +277,7 @@ model_func_weights = {
     'resnet200': [resnet200, 'resnet_200.pth'],
 }
 
-def pretrained_resnet_gap(resnet_func, pretrained_path, **kwargs):
+def resnet_gap(resnet_func, pretrain_path=None, **kwargs):
     """Constructs a pretrained ResNet model with GAP as last layer."""
 
     # Instantiating the model
@@ -287,13 +287,14 @@ def pretrained_resnet_gap(resnet_func, pretrained_path, **kwargs):
     model.conv_seg = nn.Sequential(nn.AdaptiveAvgPool3d(1), nn.Flatten())
 
     # Loading the pretrained weights
-    path = pretrained_path + model_func_weights[resnet_func][1]
-    weights_dict = torch.load(path, map_location=model.device)['state_dict']
-    not_parallel_weights_dict = {}
-    for key, value in weights_dict.items():
-        new_key = key.replace('module.', '')
-        not_parallel_weights_dict[new_key] = value
-        
-    model.load_state_dict(not_parallel_weights_dict, strict=False)
+    if pretrain_path is not None:
+        path = pretrain_path + model_func_weights[resnet_func][1]
+        weights_dict = torch.load(path, map_location=model.device)['state_dict']
+        not_parallel_weights_dict = {}
+        for key, value in weights_dict.items():
+            new_key = key.replace('module.', '')
+            not_parallel_weights_dict[new_key] = value
+            
+        model.load_state_dict(not_parallel_weights_dict, strict=False)
 
     return model

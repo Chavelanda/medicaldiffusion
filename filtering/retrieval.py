@@ -8,14 +8,14 @@ import torch.nn.functional as F
 import medicalnet as mednet
 
 class RetrievalResnet(pl.LightningModule):
-    def __init__(self, cfg, verbose=False) -> None:
+    def __init__(self, cfg, input_d=512, input_h=512, input_w=512) -> None:
         super().__init__()
         self.cfg = cfg
 
         model_params = {
-            'sample_input_D': cfg.model.input_D,
-            'sample_input_H': cfg.model.input_H,
-            'sample_input_W': cfg.model.input_W,
+            'sample_input_D': input_d,
+            'sample_input_H': input_h,
+            'sample_input_W': input_w,
             'num_seg_classes': 1, # not used
             'no_cuda': True if cfg.model.gpus == 0 else False
         }
@@ -25,8 +25,6 @@ class RetrievalResnet(pl.LightningModule):
         self.resnet = mednet.resnet_gap(cfg.model.resnet_type, pretrain_path=
                                         cfg.model.pretrain_path, **model_params)
         self.margin = 1.0
-
-        self.verbose = verbose
 
     def triplet_margin_loss_online(self, x):
         B, I, C = x.shape

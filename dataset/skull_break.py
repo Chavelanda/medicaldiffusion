@@ -34,13 +34,16 @@ class SKULLBREAKDatasetTriplet(Dataset):
         self.root_dir = root_dir
         self.file_names = glob.glob(os.path.join(
             root_dir, './**/*.nrrd'), recursive=True)
-        
-        self.d = resize_d
-        self.h = resize_h
-        self.w = resize_w
-        
 
-        self.resize = tio.Resample((self.d, self.h, self.w))
+        self.resize_d = resize_d
+        self.resize_h = resize_h
+        self.resize_w = resize_w
+        
+        img, _ = nrrd.read(self.file_names[0])
+        d, h, w = img.shape
+        self.d, self.h, self.w, = d//self.resize_d, h//self.resize_h, w//self.resize_w
+
+        self.resize = tio.Resample((self.resize_d, self.resize_h, self.resize_w))
         self.augment = tio.Compose([
             tio.RandomFlip(axes=(0, 2,), flip_probability=0.5), # 0 for depth, 1 for vertical, 2 for horizontal
             ])
@@ -83,10 +86,12 @@ if __name__ == '__main__':
 
     print('Testing SKULLBREAKDatasetTriplet')
     # Instantiate the dataset
-    dataset = SKULLBREAKDatasetTriplet(d=4, h=4, w=4)
+    dataset = SKULLBREAKDatasetTriplet(resize_d=4, resize_h=4, resize_w=4)
     print('Dataset length: ', len(dataset))
+    print('Data shape: ', dataset.d, dataset.h, dataset.w)
 
     # Retrieve an item
     item = dataset[0]
     print("Shape of the item:", item['data'].shape)
+
 

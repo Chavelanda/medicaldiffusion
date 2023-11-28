@@ -1,5 +1,5 @@
-name: SKULL-BREAK-RETRIEVAL
-root_dir: /data/skull-break/train/nrdd/complete-skull/
+name: SKULL-BREAK-TRIPLET
+root_dir: data/skull-break/train/nrrd/complete_skull
 resize_d: 4
 resize_h: 4
 resize_w: 4

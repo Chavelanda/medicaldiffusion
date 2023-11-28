@@ -3,6 +3,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import wandb
 
 
 import medicalnet as mednet
@@ -17,7 +18,7 @@ class RetrievalResnet(pl.LightningModule):
             'sample_input_H': input_h,
             'sample_input_W': input_w,
             'num_seg_classes': 1, # not used
-            'no_cuda': True if cfg.model.gpus == 0 else False
+            'no_cuda': True if cfg.model.accelerator == 'cpu' else False
         }
 
         assert cfg.model.resnet_type in mednet.model_names, f"Resnet type {cfg.model.resnet_type} not found in {mednet.__all__}"
@@ -25,6 +26,9 @@ class RetrievalResnet(pl.LightningModule):
         self.resnet = mednet.resnet_gap(cfg.model.resnet_type, pretrain_path=
                                         cfg.model.pretrain_path, **model_params)
         self.margin = 1.0
+        
+        # save hyper-parameters to self.hparams (auto-logged by W&B)
+        self.save_hyperparameters()
 
     def triplet_margin_loss_online(self, x):
         B, I, C = x.shape
@@ -67,6 +71,11 @@ class RetrievalResnet(pl.LightningModule):
 
         semi_hard_negative_mask = (positive_anchor_distances < negative_anchor_distances) & (negative_anchor_distances < positive_anchor_margin_distances)
         
+        num_semi_hard_negatives = semi_hard_negative_mask.sum()
+        if num_semi_hard_negatives == 0:
+            print("Warning: No semi-hard negatives found. Using all negatives")
+            semi_hard_negative_mask = torch.ones_like(semi_hard_negative_mask).bool()
+        
         masked_positive_anchor_distances = positive_anchor_distances[semi_hard_negative_mask]
         masked_negative_anchor_distances = negative_anchor_distances[semi_hard_negative_mask]
 
@@ -86,22 +95,21 @@ class RetrievalResnet(pl.LightningModule):
         x = x_batched.view(B, I, -1)
 
         loss = self.triplet_margin_loss_online(x)
-    
+
         return loss
 
 
 
     def training_step(self, batch, batch_idx):
         loss = self.forward(batch)
-
-        self.log('train/triplet_loss', loss, prog_bar=True)
+        
+        wandb.log({'train/triplet_loss': loss, 'trainer/global_step': self.global_step})
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self.forward(batch)
 
-        # Logging to be understood
-        self.log('val/triplet_loss', loss, prog_bar=True)
+        wandb.log({'val/triplet_loss': loss, 'trainer/global_step': self.global_step})
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         return self(batch)

@@ -104,12 +104,14 @@ class RetrievalResnet(pl.LightningModule):
         loss = self.forward(batch)
         
         wandb.log({'train/triplet_loss': loss, 'trainer/global_step': self.global_step})
+        self.log('train/triplet_loss', loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self.forward(batch)
 
         wandb.log({'val/triplet_loss': loss, 'trainer/global_step': self.global_step})
+        self.log('val/triplet_loss', loss, prog_bar=True)
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         return self(batch)

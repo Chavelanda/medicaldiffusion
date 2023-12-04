@@ -10,10 +10,21 @@ import nrrd
 
 
 class SKULLBREAKDataset(Dataset):
-    def __init__(self, root_dir='data/skull-break/train/nrrd/complete_skull'):
+    def __init__(self, root_dir='data/skull-break/train/nrrd/complete_skull',
+                 resize_d=1, resize_h=1, resize_w=1):
         self.root_dir = root_dir
         self.file_names = glob.glob(os.path.join(
             root_dir, './**/*.nrrd'), recursive=True)
+
+        self.resize_d = resize_d
+        self.resize_h = resize_h
+        self.resize_w = resize_w
+        
+        img, _ = nrrd.read(self.file_names[0])
+        d, h, w = img.shape
+        self.d, self.h, self.w, = d//self.resize_d, h//self.resize_h, w//self.resize_w
+
+        self.resize = tio.Resample((self.resize_d, self.resize_h, self.resize_w))
 
     def __len__(self):
         return len(self.file_names)
@@ -23,9 +34,9 @@ class SKULLBREAKDataset(Dataset):
         img, header = nrrd.read(path)
 
         img = torch.from_numpy(img)
-
         img = img.unsqueeze(0).float()
-
+        img = self.resize(img)
+       
         return {'data': img}
     
 class SKULLBREAKDatasetTriplet(Dataset):

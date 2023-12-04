@@ -79,7 +79,7 @@ class LPIPS(nn.Module):
 
     @classmethod
     def from_pretrained(cls, name="vgg_lpips"):
-        if name is not "vgg_lpips":
+        if name != "vgg_lpips":
             raise NotImplementedError
         model = cls()
         ckpt = get_ckpt_path(name, os.path.join(
@@ -133,7 +133,10 @@ class NetLinLayer(nn.Module):
 class vgg16(torch.nn.Module):
     def __init__(self, requires_grad=False, pretrained=True):
         super(vgg16, self).__init__()
-        vgg_pretrained_features = models.vgg16(pretrained=pretrained).features
+        if pretrained:
+            vgg_pretrained_features = models.vgg16(weights=models.VGG16_Weights.DEFAULT).features
+        else:
+            vgg_pretrained_features = models.vgg16().features
         self.slice1 = torch.nn.Sequential()
         self.slice2 = torch.nn.Sequential()
         self.slice3 = torch.nn.Sequential()

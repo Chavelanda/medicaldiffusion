@@ -289,6 +289,7 @@ def resnet_gap(resnet_func, pretrain_path=None, **kwargs):
     # Loading the pretrained weights
     if pretrain_path is not None:
         path = pretrain_path + model_func_weights[resnet_func][1]
+        print(f'Loading pretrained weights from {path}')
         weights_dict = torch.load(path, map_location=model.device)['state_dict']
         not_parallel_weights_dict = {}
         for key, value in weights_dict.items():
@@ -296,5 +297,7 @@ def resnet_gap(resnet_func, pretrain_path=None, **kwargs):
             not_parallel_weights_dict[new_key] = value
             
         model.load_state_dict(not_parallel_weights_dict, strict=False)
+    else:
+        print('No pretrained weights loaded')
 
     return model

@@ -128,7 +128,7 @@ class VQGAN(pl.LightningModule):
 
         # print('Selecting random frames')
         # Selects one random 2D image from each 3D Image
-        frame_idx = torch.randint(0, T, [B]).to(x)
+        frame_idx = torch.randint(0, T, [B]).to(self.device)
         frame_idx_selected = frame_idx.reshape(-1, 1, 1, 1, 1).repeat(1, C, 1, H, W)
         frames = torch.gather(x, 2, frame_idx_selected).squeeze(2)
         frames_recon = torch.gather(x_recon, 2, frame_idx_selected).squeeze(2)

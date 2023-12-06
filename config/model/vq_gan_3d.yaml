@@ -11,15 +11,15 @@ resume: False
 wandb_project: medicaldiffusion
 wandb_entity: chavelanda
 run_name: test-001
-max_steps: 2
-max_epochs: 1
+max_steps: -1
+max_epochs: 10
 precision: 32
 gradient_clip_val: 1.0
 
 
 embedding_dim: 128 #256
-n_codes: 1024 # 2048
-n_hiddens: 64 # 240
+n_codes: 1024 # 2048 # Number of codes in the codebook
+n_hiddens: 64 # 240 # Number of channels of the input in the first conv before encoding 
 lr: 3e-4
 downsample: [2, 2, 2] # [4,4,4]
 disc_channels: 64

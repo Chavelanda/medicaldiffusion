@@ -86,6 +86,7 @@ def run(cfg: DictConfig):
         precision=cfg.model.precision,
         # gradient_clip_val=cfg.model.gradient_clip_val, # TO BE MANUALLY IMPLEMENTED
         logger=wandb_logger,
+        log_every_n_steps=1
     )
 
     trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)

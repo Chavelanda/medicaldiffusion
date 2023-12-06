@@ -160,7 +160,6 @@ class VQGAN(pl.LightningModule):
             # print('Perceptual loss')
             losses[f'{name}/perceptual_loss'] = self.perceptual_loss(frames, frames_recon)
         
-        losses['trainer/global_step'] = self.global_step
         return x_recon, losses
 
     def dd_loss(self, x, x_recon, frames, frames_recon, disc_factor):
@@ -236,7 +235,7 @@ class VQGAN(pl.LightningModule):
         opt_ae.step()
         
         #wandb.log(losses)
-        del losses['trainer/global_step']
+        # del losses['trainer/global_step']
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
         
 
@@ -251,17 +250,19 @@ class VQGAN(pl.LightningModule):
         opt_disc.step()
         
         #wandb.log(losses)
-        del losses['trainer/global_step']
+        # del losses['trainer/global_step']
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
         
 
     def validation_step(self, batch, batch_idx):
-        print('Validation step')
         x = batch['data']  # TODO: batch['stft']
-        _, losses = self.forward(x, name='val', log_image=True)
-        
+        if batch_idx == 0:
+            _, losses = self.forward(x, name='val', log_image=True)
+        else:
+            _, losses = self.forward(x, name='val')
+
         self.log_dict(losses, prog_bar=True)
-        wandb.log(losses)
+        # wandb.log(losses)
 
     def configure_optimizers(self):
         print('Setting up optimizers')

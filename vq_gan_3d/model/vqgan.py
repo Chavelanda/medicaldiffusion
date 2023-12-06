@@ -205,8 +205,8 @@ class VQGAN(pl.LightningModule):
         logits_image_fake, pred_image_fake = self.image_discriminator(frames_recon)
         logits_video_fake, pred_video_fake = self.video_discriminator(x_recon)
         
-        g_image_loss = -torch.mean(logits_image_fake)
-        g_video_loss = -torch.mean(logits_video_fake)
+        g_image_loss = -torch.mean(logits_image_fake).to(self.device)
+        g_video_loss = -torch.mean(logits_video_fake).to(self.device)
         g_loss = self.image_gan_weight*g_image_loss + self.video_gan_weight*g_video_loss
         
         aeloss = disc_factor * g_loss
@@ -214,7 +214,7 @@ class VQGAN(pl.LightningModule):
         return pred_image_fake, pred_video_fake, g_image_loss, g_video_loss, aeloss
 
     def perceptual_loss(self, frames, frames_recon):
-        perceptual_loss = torch.zeros(1)
+        perceptual_loss = torch.zeros(1).to(self.device)
         if self.perceptual_weight > 0:
             perceptual_loss = self.perceptual_model(frames, frames_recon).mean() * self.perceptual_weight       
         

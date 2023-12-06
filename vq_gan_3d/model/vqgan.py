@@ -153,8 +153,8 @@ class VQGAN(pl.LightningModule):
         # Train discriminator
         elif optimizer_idx == 1:
             # Discriminator loss
-            losses[f'{name}/logits_image_real'], losses[f'{name}/logits_video_real'], losses[f'{name}/logits_image_fake'], losses[f'{name}/logits_video_fake'], losses[f'{name}/d_image_loss'], losses[f'{name}/d_video_loss'], losses[f'{name}/discloss'] = self.dd_loss(x, x_recon, frames, frames_recon, disc_factor)
-        
+            #losses[f'{name}/logits_image_real'], losses[f'{name}/logits_video_real'], losses[f'{name}/logits_image_fake'], losses[f'{name}/logits_video_fake'], losses[f'{name}/d_image_loss'], losses[f'{name}/d_video_loss'], losses[f'{name}/discloss'] = self.dd_loss(x, x_recon, frames, frames_recon, disc_factor)
+            _, _, _, _, losses[f'{name}/d_image_loss'], losses[f'{name}/d_video_loss'], losses[f'{name}/discloss'] = self.dd_loss(x, x_recon, frames, frames_recon, disc_factor)
         # Validation
         else:
             # print('Perceptual loss')

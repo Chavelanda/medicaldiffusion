@@ -1,7 +1,7 @@
 # The code has been taken from the following repository:
 # https://github.com/Tencent/MedicalNet/tree/master
 # pretrained models: https://drive.google.com/file/d/1-0Z3Q4Z3Z2Z3Z3Z3Z3Z3Z3Z3Z3Z3Z3Z/view?usp=sharing
-
+# Using as in pinaya et al.
 
 import torch
 import torch.nn as nn

@@ -23,7 +23,7 @@ def run(cfg: DictConfig):
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=cfg.model.batch_size,
                                   num_workers=cfg.model.num_workers, sampler=sampler)
     val_dataloader = DataLoader(val_dataset, batch_size=cfg.model.batch_size,
-                                shuffle=False, num_workers=cfg.model.num_workers)
+                                shuffle=True, num_workers=cfg.model.num_workers)
 
     # automatically adjust learning rate
     # capire come prendere i n devices!
@@ -46,17 +46,12 @@ def run(cfg: DictConfig):
                      save_top_k=-1, dirpath=base_dir, filename='train-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_train_steps=10000, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
-    # callbacks.append(ImageLogger(
-    #     batch_frequency=750, max_images=4, clamp=True))
-    # callbacks.append(VideoLogger(
-    #     batch_frequency=1500, max_videos=4, clamp=True))
 
     # load the most recent checkpoint file
     ckpt_path = None
 
     if cfg.model.resume and os.path.exists(base_dir):
         print('Will resume from the recent ckpt')
-
         # Copy and rename the latest checkpoint file
         if 'latest_checkpoint.ckpt' in os.listdir(base_dir):
             src_file = os.path.join(base_dir, 'latest_checkpoint.ckpt')
@@ -84,7 +79,6 @@ def run(cfg: DictConfig):
         max_steps=cfg.model.max_steps,
         max_epochs=cfg.model.max_epochs,
         precision=cfg.model.precision,
-        # gradient_clip_val=cfg.model.gradient_clip_val, # TO BE MANUALLY IMPLEMENTED
         logger=wandb_logger,
         log_every_n_steps=1
     )

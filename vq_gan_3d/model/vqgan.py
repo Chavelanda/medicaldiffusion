@@ -145,10 +145,13 @@ class VQGAN(pl.LightningModule):
             losses[f'{name}/perceptual_loss'] = self.perceptual_loss(frames, frames_recon)
 
             # Discriminator loss (turned on after a certain epoch)
-            pred_image_fake, pred_video_fake, losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/aeloss'] = self.dg_loss(x_recon, frames_recon, disc_factor)
+            if disc_factor > 0:
+                pred_image_fake, pred_video_fake, losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/aeloss'] = self.dg_loss(x_recon, frames_recon, disc_factor)
 
-            # GAN feature matching loss - tune features such that we get the same prediction result on the discriminator
-            losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = self.gan_feat_loss(x, frames, pred_image_fake, pred_video_fake, disc_factor)
+                # GAN feature matching loss - tune features such that we get the same prediction result on the discriminator
+                losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = self.gan_feat_loss(x, frames, pred_image_fake, pred_video_fake, disc_factor)
+            else:
+                losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/aeloss'], losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
 
         # Train discriminator
         elif optimizer_idx == 1:
@@ -238,20 +241,20 @@ class VQGAN(pl.LightningModule):
         # del losses['trainer/global_step']
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
         
-
-        # Train discriminator
-        _, losses = self.forward(x, optimizer_idx=1, name='train_d')
-        
-        loss_disc = losses['train_d/discloss']
-        
-        opt_disc.zero_grad()
-        self.manual_backward(loss_disc)
-        self.clip_gradients(opt_disc, self.gradient_clip_val)
-        opt_disc.step()
-        
-        #wandb.log(losses)
-        # del losses['trainer/global_step']
-        self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
+        # Train discriminator when needed
+        if self.global_step >= self.cfg.model.discriminator_iter_start:
+            _, losses = self.forward(x, optimizer_idx=1, name='train_d')
+            
+            loss_disc = losses['train_d/discloss']
+            
+            opt_disc.zero_grad()
+            self.manual_backward(loss_disc)
+            self.clip_gradients(opt_disc, self.gradient_clip_val)
+            opt_disc.step()
+            
+            #wandb.log(losses)
+            # del losses['trainer/global_step']
+            self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
         
 
     def validation_step(self, batch, batch_idx):

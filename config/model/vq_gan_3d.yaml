@@ -10,8 +10,8 @@ default_root_dir_postfix: ''
 resume: False
 wandb_project: medicaldiffusion
 wandb_entity: chavelanda
-run_name: test-allcts
-max_steps: 2
+run_name: test-allcts-global
+max_steps: 4
 max_epochs: 10
 precision: 32
 gradient_clip_val: 1.0

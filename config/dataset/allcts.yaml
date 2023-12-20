@@ -1,6 +1,6 @@
 name: AllCTs
-root_dir: data/AllCTs_nrrd
-resize_d: 8
-resize_h: 8
-resize_w: 8
+root_dir: data/AllCTs_nrrd_global
+resize_d: 1
+resize_h: 1
+resize_w: 1
 image_channels: 1

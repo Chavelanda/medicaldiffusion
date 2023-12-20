@@ -9,7 +9,7 @@ DATASET_CLASSES = {
     'LIDC': (LIDCDataset, {'train': {'augmentation': True}, 'val': {'augmentation': False}}),
     'SKULL-BREAK': (SKULLBREAKDataset, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'SKULL-BREAK-TRIPLET': (SKULLBREAKDatasetTriplet, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
-    'AllCTs': (AllCTsDataset, {'train': {'split': 'train', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'split': 'val', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
+    'AllCTs': (AllCTsDataset, {'train': {'split': 'all', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'split': 'val', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'DEFAULT': (DEFAULTDataset, {'train': {}, 'val': {}})
 }
 

@@ -9,32 +9,29 @@ import torchio as tio
 import open3d as o3d
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import nrrd
 
+
 class AllCTsDataset(Dataset):
-    def __init__(self, root_dir='data/AllCTs_nrrd', split='train', augmentation=False,
+    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', augmentation=False,
                  resize_d=1, resize_h=1, resize_w=1):
         
-        assert split in ['train', 'val', 'test'], 'Invalid split: {}'.format(split)
-        
-        self.cts = []
+        assert split in ['all', 'train', 'val', 'test'], 'Invalid split: {}'.format(split)
 
         self.root_dir = root_dir
 
-        # Take json file containing splits
-        with open(os.path.join(root_dir, 'splits.json'), 'r') as f:
-            splits = json.load(f)
-        
+        # Read the CSV file as a DataFrame
+        self.df = pd.read_csv(os.path.join(root_dir, 'metadata.csv'))
+
         # Take only the required split
-        for quality in splits:
-            self.cts += quality[split]
+        if split != 'all':
+            self.df = self.df[self.df['split'] == split]
 
         # Read one 3d image and define sizes
-        img, _ = nrrd.read(f'{self.root_dir}/{self.cts[0]}.nrrd')
+        img, _ = nrrd.read(f'{self.root_dir}/{self.df["name"].iloc[0]}.nrrd')
         d, h, w = img.shape
-        # Show one slice
-        # plt.imshow(img[d//2,:,:], cmap='gray')
-        # plt.show()
+      
         self.resize_d = resize_d
         self.resize_h = resize_h
         self.resize_w = resize_w
@@ -48,17 +45,47 @@ class AllCTsDataset(Dataset):
         # Augmentation transform
 
     def __len__(self):
-        return len(self.cts)
+        return len(self.df)
 
     def __getitem__(self, index):
-        path = os.path.join(self.root_dir, self.cts[index] + '.nrrd')
+        path = os.path.join(self.root_dir, self.df['name'].iloc[index] + '.nrrd')
         img, _ = nrrd.read(path)
 
         img = torch.from_numpy(img)
+
+        #  min-max normalized to the range between -1 and 1
+        img = torch.where(img == 0, torch.tensor(-1, dtype=img.dtype), img)
+        
         img = img.unsqueeze(0).float()
         img = self.resize(img)
        
         return {'data': img}
+    
+    def show_named_item(self, item_name, slice=512//2):
+        path = os.path.join(self.root_dir, item_name + '.nrrd')
+        img, _ = nrrd.read(path)
+
+        # Get the middle slice index
+        middle_slice = img.shape[0] // 2
+
+        # Plot the middle slice from different perspectives
+        fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+
+        # Axial view
+        axs[0].imshow(img[middle_slice, :, :])
+        axs[0].set_title('Axial View')
+
+        # Sagittal view
+        axs[1].imshow(img[:, middle_slice, :])
+        axs[1].set_title('Sagittal View')
+
+        # Coronal view
+        axs[2].imshow(img[:, :, middle_slice])
+        axs[2].set_title('Coronal View')
+
+        # Show the plot
+        plt.show()
+
 
 def process_folders_and_save_voxel_grid(input_folder, output_folder, grid_dim=512, file_start=None):
     start = True if file_start is None else False
@@ -130,47 +157,12 @@ def rename_files(folder):
         os.rename(file, os.path.join(folder, new_name))
 
 if __name__ == '__main__':
-
-    # mesh = trimesh.load('data/AllCTs/CT2/CT2_C.stl')
-    # mesh.visual.face_colors = [200, 200, 250, 100]
-    # mesh_m = trimesh.load('data/AllCTs/CT2/CT2_M.stl')
-    # print(mesh.extents)
-    # voxelized = mesh.voxelized(0.66).fill()
-    # voxelized_m = mesh.voxelized(0.66).fill()
-    # print(voxelized.shape)
-    # # Convert voxelized mesh to a 3D numpy array
-    # voxel_array = voxelized.matrix
-    # print(type(voxel_array))
-
-    # # Select a slice to display
-    # slice_index = voxel_array.shape[2] // 2  # Select the middle slice
-    # slice = voxel_array[:, :, slice_index]
-    
-    # plt.imshow(slice, cmap='gray')
-    # plt.show()
-
-    # combined = trimesh.util.concatenate([mesh, mesh_m])
-    # s = trimesh.Scene(combined)
-    # s.show()
-
-    # mesh = o3d.io.read_triangle_mesh('data/AllCTs/CT2/CT2_C.stl')
-    # # print(mesh)
-    # # mesh.compute_vertex_normals()
-    # # mesh.paint_uniform_color([1, 0.706, 0])
-    # # o3d.visualization.draw_geometries([mesh])
-    
-    # rename_files('data/AllCTs_nrrd')
-
-    # Example usage:
-    # input_folder_path = "data/AllCTs/"
-    # output_folder_path = "data/AllCTs_nrrd/"
-    # file_start = 'CTS242'
-    # process_folders_and_save_voxel_grid(input_folder_path, output_folder_path, file_start=file_start)
-
-    dataset = AllCTsDataset(split='val')
-    print(dataset.cts[0])
+    dataset = AllCTsDataset(split='all')
     print(len(dataset))
-    input = dataset[1]
+    dataset.show_named_item('CT006')
+    input = dataset[943]
+    name = dataset.df['name'].iloc[943]
+    dataset.show_named_item(name)
     
     plt.imshow(input['data'][0, :,512//2,:], cmap='gray')
     plt.show()

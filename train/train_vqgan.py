@@ -5,7 +5,8 @@ import shutil
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
-from torch.utils.data import DataLoader
+import torch
+from torch.utils.data import DataLoader, Subset
 
 from ddpm.diffusion import default
 from vq_gan_3d.model import VQGAN
@@ -20,10 +21,11 @@ def run(cfg: DictConfig):
     pl.seed_everything(cfg.model.seed)
 
     train_dataset, val_dataset, sampler = get_dataset(cfg)
+    val_dataset = Subset(val_dataset, range(0, 2))
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=cfg.model.batch_size,
                                   num_workers=cfg.model.num_workers, sampler=sampler)
     val_dataloader = DataLoader(val_dataset, batch_size=cfg.model.batch_size,
-                                shuffle=True, num_workers=cfg.model.num_workers)
+                                shuffle=False, num_workers=cfg.model.num_workers)
 
     # automatically adjust learning rate
     # capire come prendere i n devices!
@@ -83,6 +85,7 @@ def run(cfg: DictConfig):
         log_every_n_steps=1
     )
 
+    torch.set_float32_matmul_precision('medium')
     trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
 
 

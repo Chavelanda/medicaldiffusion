@@ -151,7 +151,7 @@ class VQGAN(pl.LightningModule):
                 # GAN feature matching loss - tune features such that we get the same prediction result on the discriminator
                 losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = self.gan_feat_loss(x, frames, pred_image_fake, pred_video_fake, disc_factor)
             else:
-                losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/aeloss'], losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1)
+                losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/aeloss'], losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device)
 
         # Train discriminator
         elif optimizer_idx == 1:

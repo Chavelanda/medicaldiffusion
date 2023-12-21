@@ -82,7 +82,8 @@ def run(cfg: DictConfig):
         max_epochs=cfg.model.max_epochs,
         precision=cfg.model.precision,
         logger=wandb_logger,
-        log_every_n_steps=1
+        log_every_n_steps=1,
+        val_check_interval=0.2
     )
 
     torch.set_float32_matmul_precision('medium')

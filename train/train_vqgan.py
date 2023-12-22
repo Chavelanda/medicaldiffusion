@@ -76,7 +76,6 @@ def run(cfg: DictConfig):
         accelerator=cfg.model.accelerator,
         devices=cfg.model.devices,
         accumulate_grad_batches=cfg.model.accumulate_grad_batches,
-        gradient_clip_val=cfg.model.gradient_clip_val,
         default_root_dir=cfg.model.default_root_dir,
         callbacks=callbacks,
         max_steps=cfg.model.max_steps,
@@ -84,7 +83,6 @@ def run(cfg: DictConfig):
         precision=cfg.model.precision,
         logger=wandb_logger,
         log_every_n_steps=1,
-        val_check_interval=0.2
     )
 
     torch.set_float32_matmul_precision('medium')

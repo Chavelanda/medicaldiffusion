@@ -86,8 +86,8 @@ class VQGAN(pl.LightningModule):
 
         self.l1_weight = cfg.model.l1_weight
 
-        self.automatic_optimization = False
-        self.gradient_clip_val = cfg.model.gradient_clip_val
+        #self.automatic_optimization = False
+        #self.gradient_clip_val = cfg.model.gradient_clip_val
         self.save_hyperparameters()
         
 
@@ -223,7 +223,7 @@ class VQGAN(pl.LightningModule):
         return perceptual_loss
 
     def training_step(self, batch, batch_idx):
-        opt_ae, opt_disc = self.optimizers()
+        # opt_ae, opt_disc = self.optimizers()
         
         x = batch['data']
         
@@ -232,29 +232,29 @@ class VQGAN(pl.LightningModule):
         
         loss_ae = losses['train_g/recon_loss'] + losses['train_g/commitment_loss'] + losses['train_g/aeloss'] + losses['train_g/perceptual_loss'] + losses['train_g/gan_feat_loss']
         
-        opt_ae.zero_grad()
-        self.manual_backward(loss_ae)
-        self.clip_gradients(opt_ae, self.gradient_clip_val)
-        opt_ae.step()
+        # opt_ae.zero_grad()
+        # self.manual_backward(loss_ae)
+        # self.clip_gradients(opt_ae, self.gradient_clip_val)
+        # opt_ae.step()
         
-        #wandb.log(losses)
-        # del losses['trainer/global_step']
+        # #wandb.log(losses)
+        # # del losses['trainer/global_step']
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
-        
-        # Train discriminator when needed
-        if self.global_step % 2 == 0 and self.global_step >= self.cfg.model.discriminator_iter_start:
-            _, losses = self.forward(x, optimizer_idx=1, name='train_d')
+        return loss_ae
+        # # Train discriminator when needed
+        # if self.global_step % 2 == 0 and self.global_step >= self.cfg.model.discriminator_iter_start:
+        #     _, losses = self.forward(x, optimizer_idx=1, name='train_d')
             
-            loss_disc = losses['train_d/discloss']
+        #     loss_disc = losses['train_d/discloss']
             
-            opt_disc.zero_grad()
-            self.manual_backward(loss_disc)
-            self.clip_gradients(opt_disc, self.gradient_clip_val)
-            opt_disc.step()
+        #     opt_disc.zero_grad()
+        #     self.manual_backward(loss_disc)
+        #     self.clip_gradients(opt_disc, self.gradient_clip_val)
+        #     opt_disc.step()
             
-            #wandb.log(losses)
-            # del losses['trainer/global_step']
-            self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
+        #     #wandb.log(losses)
+        #     # del losses['trainer/global_step']
+        #     self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
         
 
     def validation_step(self, batch, batch_idx):
@@ -279,7 +279,7 @@ class VQGAN(pl.LightningModule):
         opt_disc = torch.optim.Adam(list(self.image_discriminator.parameters()) +
                                     list(self.video_discriminator.parameters()),
                                     lr=lr, betas=(0.5, 0.9))
-        return opt_ae, opt_disc
+        return opt_ae#, opt_disc
     
     # def log_optim_0(self, vq_output, recon_loss, perceptual_loss, g_image_loss, g_video_loss, aeloss, image_gan_feat_loss, video_gan_feat_loss):
     #     logs = {'train/g_image_loss': g_image_loss, 'train/g_video_loss': g_video_loss, 

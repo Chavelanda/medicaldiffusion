@@ -76,6 +76,7 @@ def run(cfg: DictConfig):
         accelerator=cfg.model.accelerator,
         devices=cfg.model.devices,
         accumulate_grad_batches=cfg.model.accumulate_grad_batches,
+        gradient_clip_val=cfg.model.gradient_clip_val,
         default_root_dir=cfg.model.default_root_dir,
         callbacks=callbacks,
         max_steps=cfg.model.max_steps,

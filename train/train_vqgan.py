@@ -52,17 +52,15 @@ def run(cfg: DictConfig):
     # load the most recent checkpoint file
     ckpt_path = None
 
-    if cfg.model.resume and os.path.exists(base_dir):
+    if cfg.model.resume and os.path.exists(cfg.model.checkpoint_path):
         print('Will resume from the recent ckpt')
-        # Copy and rename the latest checkpoint file
-        if 'latest_checkpoint.ckpt' in os.listdir(base_dir):
-            src_file = os.path.join(base_dir, 'latest_checkpoint.ckpt')
-            ckpt_file = 'latest_checkpoint_prev.ckpt'
-            ckpt_path = os.path.join(base_dir, ckpt_file)
-            shutil.copy(src_file, ckpt_path)
+        # Check if checkpoint exists
+        if os.path.isfile(cfg.model.checkpoint_path):
+            model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path)
+            ckpt_path = cfg.model.checkpoint_path
             print(f'Will resume from the recent ckpt {ckpt_path}')
         else:
-            print('No latest_checkpoint.ckpt found in {}.'.format(base_dir))
+            print('No latest_checkpoint.ckpt found in {}.'.format(cfg.model.checkpoint_path))
             return None
 
     # create wandb logger

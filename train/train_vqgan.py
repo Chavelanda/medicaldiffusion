@@ -1,6 +1,7 @@
 "Adapted from https://github.com/SongweiGe/TATS"
 
 import os
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:500'
 import shutil
 
 import pytorch_lightning as pl
@@ -44,9 +45,9 @@ def run(cfg: DictConfig):
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
                      save_top_k=3, mode='min', dirpath=base_dir, filename='latest_checkpoint'))
-    callbacks.append(ModelCheckpoint(every_n_train_steps=1000,
+    callbacks.append(ModelCheckpoint(every_n_train_steps=1416,
                      save_top_k=-1, dirpath=base_dir, filename='train-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_train_steps=10000, save_top_k=-1,
+    callbacks.append(ModelCheckpoint(every_n_train_steps=14160, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
 
     # load the most recent checkpoint file

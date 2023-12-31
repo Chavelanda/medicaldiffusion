@@ -57,10 +57,8 @@ class Codebook(nn.Module):
             + (self.embeddings.t() ** 2).sum(dim=0, keepdim=True)  # [bthw, c]
 
         encoding_indices = torch.argmin(distances, dim=1)
-        encode_onehot = F.one_hot(encoding_indices, self.n_codes).type_as(
-            flat_inputs)  # [bthw, ncode]
-        encoding_indices = encoding_indices.view(
-            z.shape[0], *z.shape[2:])  # [b, t, h, w, ncode]
+        encode_onehot = F.one_hot(encoding_indices, self.n_codes).type_as(flat_inputs)  # [bthw, ncode]
+        encoding_indices = encoding_indices.view(z.shape[0], *z.shape[2:])  # [b, t, h, w, ncode]
 
         embeddings = F.embedding(
             encoding_indices, self.embeddings)  # [b, t, h, w, c]
@@ -78,7 +76,7 @@ class Codebook(nn.Module):
 
             self.N.data.mul_(0.99).add_(n_total, alpha=0.01)
             self.z_avg.data.mul_(0.99).add_(encode_sum.t(), alpha=0.01)
-
+          
             n = self.N.sum()
             weights = (self.N + 1e-7) / (n + self.n_codes * 1e-7) * n
             encode_normalized = self.z_avg / weights.unsqueeze(1)

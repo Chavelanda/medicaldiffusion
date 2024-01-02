@@ -25,6 +25,7 @@ from torch.utils.data import Dataset, DataLoader
 from vq_gan_3d.model.vqgan import VQGAN
 
 import matplotlib.pyplot as plt
+import wandb
 
 # helpers functions
 
@@ -421,7 +422,7 @@ class Unet3D(nn.Module):
             PreNorm(init_dim, temporal_attn(init_dim)))
 
         # dimensions
-
+        dim_mults = default(dim_mults, (1, 2, 4, 8))
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
 
@@ -1009,7 +1010,7 @@ class Trainer(object):
         self.len_dataloader = len(dl)
         self.dl = cycle(dl)
 
-        print(f'found {len(self.ds)} videos as gif files at {folder}')
+        print(f'found {len(self.ds)} images at {folder}')
         assert len(
             self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
 
@@ -1085,7 +1086,7 @@ class Trainer(object):
                     self.scaler.scale(
                         loss / self.gradient_accumulate_every).backward()
 
-                print(f'{self.step}: {loss.item()}')
+                print(f'Step {self.step}: {loss.item()}')
 
             log = {'loss': loss.item()}
 
@@ -1143,6 +1144,7 @@ class Trainer(object):
                 self.save(milestone)
 
             log_fn(log)
+            
             self.step += 1
 
         print('training completed')

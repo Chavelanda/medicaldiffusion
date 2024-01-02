@@ -1,13 +1,12 @@
+import os
 from re import I
 from ddpm import Unet3D, GaussianDiffusion, Trainer
-from dataset import MRNetDataset, BRATSDataset
-import argparse
-import wandb
+import torch
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 from train.get_dataset import get_dataset
-import torch
-import os
+
+import wandb
 from ddpm.unet import UNet
 
 
@@ -18,22 +17,30 @@ def run(cfg: DictConfig):
     torch.cuda.set_device(cfg.model.gpus)
     with open_dict(cfg):
         cfg.model.results_folder = os.path.join(
-            cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix)
+            cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
 
-    if cfg.model.denoising_fn == 'Unet3D':
-        model = Unet3D(
+    # if cfg.model.denoising_fn == 'Unet3D':
+    #     model = Unet3D(
+    #         dim=cfg.model.diffusion_img_size,
+    #         dim_mults=cfg.model.dim_mults,
+    #         channels=cfg.model.diffusion_num_channels,
+    #     ).cuda()
+    # elif cfg.model.denoising_fn == 'UNet':
+    #     model = UNet(
+    #         in_ch=cfg.model.diffusion_num_channels,
+    #         out_ch=cfg.model.diffusion_num_channels,
+    #         spatial_dims=3
+    #     ).cuda()
+    # else:
+    #     raise ValueError(f"Model {cfg.model.denoising_fn} doesn't exist")
+
+    wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
+
+    model = Unet3D(
             dim=cfg.model.diffusion_img_size,
             dim_mults=cfg.model.dim_mults,
             channels=cfg.model.diffusion_num_channels,
         ).cuda()
-    elif cfg.model.denoising_fn == 'UNet':
-        model = UNet(
-            in_ch=cfg.model.diffusion_num_channels,
-            out_ch=cfg.model.diffusion_num_channels,
-            spatial_dims=3
-        ).cuda()
-    else:
-        raise ValueError(f"Model {cfg.model.denoising_fn} doesn't exist")
 
     diffusion = GaussianDiffusion(
         model,
@@ -46,6 +53,8 @@ def run(cfg: DictConfig):
         loss_type=cfg.model.loss_type,
         # objective=cfg.objective
     ).cuda()
+
+    wandb.watch(diffusion)
 
     train_dataset, *_ = get_dataset(cfg)
 
@@ -63,14 +72,13 @@ def run(cfg: DictConfig):
         num_sample_rows=cfg.model.num_sample_rows,
         results_folder=cfg.model.results_folder,
         num_workers=cfg.model.num_workers,
-        # logger=cfg.model.logger
     )
 
     if cfg.model.load_milestone:
         trainer.load(cfg.model.load_milestone)
 
-    trainer.train()
-
+    trainer.train(log_fn=wandb.log)
+    wandb.finish()
 
 if __name__ == '__main__':
     run()

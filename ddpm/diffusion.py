@@ -1086,7 +1086,7 @@ class Trainer(object):
                     self.scaler.scale(
                         loss / self.gradient_accumulate_every).backward()
 
-                print(f'Step {self.step}: {loss.item()}')
+                print(f'Step {self.step}.{i}: {loss.item()}')
 
             log = {'loss': loss.item()}
 
@@ -1120,7 +1120,7 @@ class Trainer(object):
                     all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i=self.num_sample_rows)
                 video_path = str(self.results_folder / str(f'{milestone}.gif'))
                 video_tensor_to_gif(one_gif, video_path)
-                log = {**log, 'sample': video_path}
+                log = {**log, 'sample': video_path, 'global_step': step}
 
                 # Selects one random 2D image from each 3D Image
                 B, C, D, H, W = all_videos_list.shape

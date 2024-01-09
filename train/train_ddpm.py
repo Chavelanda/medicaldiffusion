@@ -7,8 +7,6 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from train.get_dataset import get_dataset
 
 import wandb
-from ddpm.unet import UNet
-
 
 # NCCL_P2P_DISABLE=1 accelerate launch train/train_ddpm.py
 
@@ -35,6 +33,9 @@ def run(cfg: DictConfig):
     #     raise ValueError(f"Model {cfg.model.denoising_fn} doesn't exist")
 
     wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
+
+    wandb.config.update(OmegaConf.to_container(cfg.dataset))
+    wandb.config.update(OmegaConf.to_container(cfg.model))
 
     model = Unet3D(
             dim=cfg.model.diffusion_img_size,

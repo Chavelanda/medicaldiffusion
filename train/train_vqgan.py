@@ -1,7 +1,7 @@
 "Adapted from https://github.com/SongweiGe/TATS"
 
 import os
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:500'
+#os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:500'
 import shutil
 
 import pytorch_lightning as pl

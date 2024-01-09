@@ -109,7 +109,7 @@ class VQGAN(pl.LightningModule):
         h = self.post_vq_conv(shift_dim(h, -1, 1))
         return self.decoder(h)
 
-    def forward(self, x, optimizer_idx=None, log_image=False, name='train'):
+    def forward(self, x, optimizer_idx=None, log_image=False, name='train', test=False):
         B, C, T, H, W = x.shape
 
         losses = {}
@@ -120,6 +120,9 @@ class VQGAN(pl.LightningModule):
         vq_output = self.codebook(z)
         # print('Decoder')
         x_recon = self.decoder(self.post_vq_conv(vq_output['embeddings']))
+
+        if test:
+            return x_recon
 
         # print('Losses')
         losses[f'{name}/perplexity'] = vq_output['perplexity']
@@ -270,6 +273,11 @@ class VQGAN(pl.LightningModule):
 
         self.log_dict(losses, prog_bar=True)
         # wandb.log(losses)
+
+    def test_step(self, batch, batch_idx):
+        x = batch['data']
+        x_recon = self.forward(x, test=True)
+        return x_recon
 
     def configure_optimizers(self):
         print('Setting up optimizers')

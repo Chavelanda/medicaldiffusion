@@ -54,8 +54,8 @@ class AllCTsDataset(Dataset):
         img = torch.from_numpy(img)
 
         #  min-max normalized to the range between -1 and 1
-        img = torch.where(img == 0, torch.tensor(-1, dtype=img.dtype), img)
-        
+        img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
+
         img = img.unsqueeze(0).float()
         img = self.resize(img)
        
@@ -86,8 +86,18 @@ class AllCTsDataset(Dataset):
         # Show the plot
         plt.show()
 
+    def save_to_nrrd(self, item_name, item):
+        # Transform the item to numpy array
+        item = item.numpy()
 
-def process_folders_and_save_voxel_grid(input_folder, output_folder, grid_dim=512, file_start=None):
+        #  min-max normalized to the range between 0 and 1
+        item = (item - item.min()) / (item.max() - item.min())
+        
+        save_path = os.path.join(self.root_dir, item_name + '.nrrd')
+        nrrd.write(save_path, item)
+
+
+def process_mesh_folder_and_save_voxel_grid(input_folder, output_folder, grid_dim=512, file_start=None):
     start = True if file_start is None else False
 
     for idx, folder_name in enumerate(os.listdir(input_folder)):
@@ -161,6 +171,7 @@ if __name__ == '__main__':
     print(len(dataset))
     dataset.show_named_item('CT006')
     input = dataset[943]
+    print(input['data'].max(), input['data'].min())
     name = dataset.df['name'].iloc[943]
     dataset.show_named_item(name)
     

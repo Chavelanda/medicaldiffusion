@@ -10,7 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 from train.get_dataset import get_dataset
 
-from filtering.retrieval import RetrievalResnet
+from retrieval.retrieval import RetrievalResnet
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):

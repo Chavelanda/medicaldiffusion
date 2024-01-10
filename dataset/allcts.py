@@ -85,10 +85,16 @@ class AllCTsDataset(Dataset):
         # Show the plot
         plt.show()
 
-    def show_named_item(self, item_name, slice=512//2, vmin=0, vmax=1):
-        path = os.path.join(self.root_dir, item_name + '.nrrd')
+    def show_named_item(self, item_name, slice=512//2, vmin=0, vmax=1, path=None):
+        if path is None:
+            path = os.path.join(self.root_dir, item_name + '.nrrd')
+        else:
+            path = os.path.join(path, item_name + '.nrrd')
+        
         img, _ = nrrd.read(path)
         
+        print(img.shape)
+
         self.show_item(img, slice, vmin, vmax)
 
     def get_named_item(self, item_name):
@@ -98,6 +104,10 @@ class AllCTsDataset(Dataset):
     def save_to_nrrd(self, item_name, item, save_path=None):
         # Transform the item to numpy array
         item = item.numpy()
+
+        # Remove channel dimension if present
+        if len(item.shape) == 4:
+            item = item.squeeze(0)
 
         #  min-max normalized to the range between 0 and 1
         item = (item - item.min()) / (item.max() - item.min())

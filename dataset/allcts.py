@@ -61,39 +61,50 @@ class AllCTsDataset(Dataset):
        
         return {'data': img}
     
-    def show_named_item(self, item_name, slice=512//2):
-        path = os.path.join(self.root_dir, item_name + '.nrrd')
-        img, _ = nrrd.read(path)
+    def show_item(self, img, slice=512//2, vmin=0, vmax=1):
+        img = np.rot90(img, k=1, axes=(0, 2))
 
-        # Get the middle slice index
+        # Get the slice index
         middle_slice = img.shape[0] // 2
 
         # Plot the middle slice from different perspectives
         fig, axs = plt.subplots(1, 3, figsize=(15, 5))
 
         # Axial view
-        axs[0].imshow(img[middle_slice, :, :])
+        axs[0].imshow(img[middle_slice, :, :], vmin=vmin, vmax=vmax, cmap='gray')
         axs[0].set_title('Axial View')
 
         # Sagittal view
-        axs[1].imshow(img[:, middle_slice, :])
+        axs[1].imshow(img[:, middle_slice, :], vmin=vmin, vmax=vmax, cmap='gray')
         axs[1].set_title('Sagittal View')
 
         # Coronal view
-        axs[2].imshow(img[:, :, middle_slice])
+        axs[2].imshow(img[:, :, middle_slice], vmin=vmin, vmax=vmax, cmap='gray')
         axs[2].set_title('Coronal View')
 
         # Show the plot
         plt.show()
 
-    def save_to_nrrd(self, item_name, item):
+    def show_named_item(self, item_name, slice=512//2, vmin=0, vmax=1):
+        path = os.path.join(self.root_dir, item_name + '.nrrd')
+        img, _ = nrrd.read(path)
+        
+        self.show_item(img, slice, vmin, vmax)
+
+    def get_named_item(self, item_name):
+        index = self.df[self.df['name'] == item_name].index[0]
+        return self.__getitem__(index)
+
+    def save_to_nrrd(self, item_name, item, save_path=None):
         # Transform the item to numpy array
         item = item.numpy()
 
         #  min-max normalized to the range between 0 and 1
         item = (item - item.min()) / (item.max() - item.min())
         
-        save_path = os.path.join(self.root_dir, item_name + '.nrrd')
+        if save_path is None:
+            save_path = os.path.join(self.root_dir, item_name + '.nrrd')
+        
         nrrd.write(save_path, item)
 
 
@@ -170,10 +181,4 @@ if __name__ == '__main__':
     dataset = AllCTsDataset(split='all')
     print(len(dataset))
     dataset.show_named_item('CT006')
-    input = dataset[943]
-    print(input['data'].max(), input['data'].min())
-    name = dataset.df['name'].iloc[943]
-    dataset.show_named_item(name)
     
-    plt.imshow(input['data'][0, :,512//2,:], cmap='gray')
-    plt.show()

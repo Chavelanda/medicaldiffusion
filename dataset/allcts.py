@@ -23,6 +23,7 @@ class AllCTsDataset(Dataset):
 
         # Read the CSV file as a DataFrame
         self.df = pd.read_csv(os.path.join(root_dir, 'metadata.csv'))
+        self.df['name'] = self.df['name'].astype(str)
 
         # Take only the required split
         if split != 'all':
@@ -61,7 +62,7 @@ class AllCTsDataset(Dataset):
        
         return {'data': img}
     
-    def show_item(self, img, slice=512//2, vmin=0, vmax=1):
+    def show_item(self, img, vmin=0, vmax=1):
         img = np.rot90(img, k=1, axes=(0, 2))
 
         # Get the slice index
@@ -85,20 +86,22 @@ class AllCTsDataset(Dataset):
         # Show the plot
         plt.show()
 
-    def show_named_item(self, item_name, slice=512//2, vmin=0, vmax=1, path=None):
+    def get_named_item(self, item_name, vmin=0, vmax=1, path=None, show=True):
         if path is None:
             path = os.path.join(self.root_dir, item_name + '.nrrd')
         else:
             path = os.path.join(path, item_name + '.nrrd')
         
         img, _ = nrrd.read(path)
+
+        if show:
+            self.show_item(img, vmin, vmax)
+        else:
+            return img
         
-        print(img.shape)
-
-        self.show_item(img, slice, vmin, vmax)
-
-    def get_named_item(self, item_name):
+    def get_named_item_from_dataset(self, item_name):
         index = self.df[self.df['name'] == item_name].index[0]
+        
         return self.__getitem__(index)
 
     def save_to_nrrd(self, item_name, item, save_path=None):
@@ -116,6 +119,50 @@ class AllCTsDataset(Dataset):
             save_path = os.path.join(self.root_dir, item_name + '.nrrd')
         
         nrrd.write(save_path, item)
+
+    def show_image_grid(self, images, axis=2, slices=(0,20,40,60,80), vmax=1, vmin=-1, names=None):
+        if isinstance(images[0], torch.Tensor):
+            images = [image.detach().cpu().numpy() for image in images]
+        
+        # Remove channel and batch dimensions if present and rotate images
+        images = [np.rot90(np.squeeze(image), k=1, axes=(0, 2)) for image in images]
+
+        # Select slices and axis and , if present
+        sliced_images = [np.swapaxes(np.take(image, slices, axis=axis), 0, axis) for image in images]
+        
+        # Display images
+        img_w = 2 * len(slices)
+        img_h = 2 * len(images)
+        
+        fig, axs = plt.subplots(len(images), len(slices), figsize=(img_w, img_h))
+        
+        for i, image in enumerate(sliced_images):
+            
+            for j, slice in enumerate(image):
+                if len(image) == 1:
+                    ax = axs[i]
+                else:
+                    ax = axs[i, j]
+                ax.imshow(slice, vmin=vmin, vmax=vmax, cmap='gray')
+                
+                ax.xaxis.set_visible(False)
+                plt.setp(ax.spines.values(), visible=False)
+                ax.tick_params(left=False, labelleft=False)
+                
+                if i == 0:                
+                    ax.set_title(f'Slice {slices[j]}')
+
+        if names is not None:
+            for i, name in enumerate(names):
+                if len(slice) == 1:
+                    ax = axs[i]
+                else:
+                    ax = axs[i, 0]
+                ax.set_ylabel(name, rotation=90, size='medium')
+        
+        fig.tight_layout()    
+        plt.show()
+
 
 
 def process_mesh_folder_and_save_voxel_grid(input_folder, output_folder, grid_dim=512, file_start=None):
@@ -188,7 +235,9 @@ def rename_files(folder):
         os.rename(file, os.path.join(folder, new_name))
 
 if __name__ == '__main__':
-    dataset = AllCTsDataset(split='all')
+    dataset = AllCTsDataset(root_dir='data/allcts-global-gen-01', split='all')
     print(len(dataset))
-    dataset.show_named_item('CT006')
+    item = dataset.__getitem__(0)
+
+    dataset.show_item(item['data'].squeeze(0).numpy())
     

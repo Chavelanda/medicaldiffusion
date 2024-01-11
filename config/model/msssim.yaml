@@ -1,0 +1,12 @@
+gpus: 0             # The GPU device to use. Set -1 for CPU.
+device: 'cuda'      #The device where the model and data should be loaded (e.g., 'cuda' or 'cpu').
+
+results_folder: 'evaluation/msssim' # The base folder where results will be stored.
+run_name:           # The name of the current run. This is used to create a subfolder in results_folder for the current run's results.
+wandb_project:      # The name of the Weights & Biases project where the run's results will be logged.
+wandb_entity:       # The name of the Weights & Biases entity (user or team) under which the project is located.
+
+batch_size: 10      # The batch size to use when creating the DataLoader.
+num_workers: 24     # The number of worker processes to use for data loading.
+window_size: 11     # The window size to use when calculating the MSSSIM.
+size_average: True  # Whether to average the MSSSIM over all pixels.

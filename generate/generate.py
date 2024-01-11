@@ -16,6 +16,9 @@ def run(cfg: DictConfig):
         cfg.model.results_folder = os.path.join(
             cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
 
+    if not os.path.exists(cfg.model.results_folder):
+        os.makedirs(cfg.model.results_folder)
+
     wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
 
     wandb.config.update(OmegaConf.to_container(cfg.dataset))
@@ -48,13 +51,14 @@ def run(cfg: DictConfig):
     n_samples = cfg.model.n_samples
     steps = n_samples // cfg.model.batch_size
 
-    for i in tqdm(range(steps), desc='Generating samples'):
-        samples = diffusion.sample(batch_size=cfg.model.batch_size)
-        for j, sample in enumerate(samples):
-            filename = f'{i*cfg.model.batch_size + j}'
-            dataset.save_to_nrrd(filename, sample)
-            print(f'Saved {filename}')
-        wandb.log({'step': i})
+    with torch.no_grad():
+        for i in tqdm(range(steps), desc='Generating samples'):
+            samples = diffusion.sample(batch_size=cfg.model.batch_size).cpu()
+            for j, sample in enumerate(samples):
+                filename = f'{i*cfg.model.batch_size + j}'
+                save_path = os.path.join(cfg.model.results_folder, filename + '.nrrd')
+                dataset.save_to_nrrd(filename, sample, save_path=save_path)
+            wandb.log({'step': i})
     
 
 if __name__ == "__main__":

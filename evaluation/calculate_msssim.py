@@ -6,7 +6,7 @@ from tqdm import tqdm
 import wandb
 import torch
 
-from pytorch_ssim import MSSSIM_3d
+from evaluation.pytorch_ssim.ssim import MSSSIM_3d
 from dataset.allcts_msssim import AllCts_MSSSIM
 
 
@@ -40,7 +40,10 @@ def run(cfg: DictConfig):
 
     with torch.no_grad():
         for i, batch in tqdm(enumerate(dataloader)):
-            img1, img2 = batch.to(cfg.model.device)
+            img1, img2 = batch
+            img1 = img1.to(cfg.model.device)
+            img2 = img2.to(cfg.model.device)
+            
             msssim = model(img1, img2)
             sum += msssim.item()
             wandb.log({'msssim': sum/(i+1), 'samples': (i+1)*cfg.model.batch_size})

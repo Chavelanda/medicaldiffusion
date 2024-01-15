@@ -1,5 +1,5 @@
 import numpy as np
-from allcts import AllCTsDataset
+from dataset.allcts import AllCTsDataset
 
 
 class AllCts_MSSSIM(AllCTsDataset):

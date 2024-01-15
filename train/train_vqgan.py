@@ -64,7 +64,6 @@ def run(cfg: DictConfig):
             print('No latest_checkpoint.ckpt found in {}.'.format(cfg.model.checkpoint_path))
             return None
 
-    print(model.cfg)
     # create wandb logger
     wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model="all")
     

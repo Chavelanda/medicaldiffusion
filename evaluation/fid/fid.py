@@ -71,6 +71,7 @@ def fid_from_path_and_activations(x1, path, name1, name2, save=False):
 
 
 def get_activations(model, dataloader, device):
+    model = model.to(device)
     model.eval()
 
     activations = []

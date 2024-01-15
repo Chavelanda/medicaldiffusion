@@ -6,15 +6,12 @@ from tqdm import tqdm
 import wandb
 import torch
 
-from pytorch_ssim import MSSSIM_3d
+from evaluation.pytorch_ssim.ssim import MSSSIM_3d
 from dataset.allcts_msssim import AllCts_MSSSIM
 
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
-def run(cfg: DictConfig):
-    if cfg.model.gpus != -1:
-        torch.cuda.set_device(cfg.model.gpus)
-    
+def run(cfg: DictConfig): 
     with open_dict(cfg):
         cfg.model.results_folder = os.path.join(
             cfg.model.results_folder, cfg.model.run_name)
@@ -34,17 +31,31 @@ def run(cfg: DictConfig):
     if cfg.dataset.samples % cfg.model.batch_size != 0:
         raise ValueError('The number of samples must be divisible by the batch size.')
 
-    model = MSSSIM_3d(window_size=cfg.model.window_size, size_average=cfg.model.size_average, channel=cfg.dataset.image_channels).to(cfg.model.device)
+    model = MSSSIM_3d(window_size=cfg.model.window_size, size_average=cfg.model.size_average, channel=cfg.dataset.image_channels)
  
     sum = 0.0
 
+    i = 1
+
+    print('Starting MSSSIM evaluation...')
     with torch.no_grad():
-        for i, batch in tqdm(enumerate(dataloader)):
-            img1, img2 = batch.to(cfg.model.device)
+        for batch in tqdm(dataloader):
+            img1, img2 = batch
             msssim = model(img1, img2)
-            sum += msssim.item()
-            wandb.log({'msssim': sum/(i+1), 'samples': (i+1)*cfg.model.batch_size})
+            if torch.isnan(msssim):
+                print('NaN encountered, skipping batch...')
+            else:
+                sum += msssim.item()
+                i += 1
+            
+            wandb.log({'msssim': sum/(i), 'samples': (i)*cfg.model.batch_size})
 
 
 if __name__ == "__main__":
-    run()
+    with hydra.initialize(version_base=None, config_path="../config/"):
+        cfg = hydra.compose(config_name='base_cfg', overrides=['model=msssim', 'dataset=allcts-msssim'])
+    print('Running MSSSIM evaluation with following config:')
+    print(cfg)
+
+    run(cfg)
+

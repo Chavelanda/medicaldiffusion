@@ -57,13 +57,14 @@ def run(cfg: DictConfig):
         print('Will resume from the recent ckpt')
         # Check if checkpoint exists
         if os.path.isfile(cfg.model.checkpoint_path):
-            model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path)
+            model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path, cfg=cfg)
             ckpt_path = cfg.model.checkpoint_path
             print(f'Will resume from the recent ckpt {ckpt_path}')
         else:
             print('No latest_checkpoint.ckpt found in {}.'.format(cfg.model.checkpoint_path))
             return None
 
+    print(model.cfg)
     # create wandb logger
     wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model="all")
     

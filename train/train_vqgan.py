@@ -57,7 +57,7 @@ def run(cfg: DictConfig):
         print('Will resume from the recent ckpt')
         # Check if checkpoint exists
         if os.path.isfile(cfg.model.checkpoint_path):
-            model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path)
+            model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path, cfg=cfg)
             ckpt_path = cfg.model.checkpoint_path
             print(f'Will resume from the recent ckpt {ckpt_path}')
         else:

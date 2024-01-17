@@ -1120,7 +1120,7 @@ class Trainer(object):
                     all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i=self.num_sample_rows)
                 video_path = str(self.results_folder / str(f'{milestone}.gif'))
                 video_tensor_to_gif(one_gif, video_path)
-                log = {**log, 'sample': video_path, 'global_step': step}
+                log = {**log, 'sample': video_path}
 
                 # Selects one random 2D image from each 3D Image
                 B, C, D, H, W = all_videos_list.shape
@@ -1143,6 +1143,7 @@ class Trainer(object):
 
                 self.save(milestone)
 
+            log = {**log, 'global_step': self.step}
             log_fn(log)
             
             self.step += 1

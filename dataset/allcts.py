@@ -47,9 +47,10 @@ class AllCTsDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, index):
-        path = os.path.join(self.root_dir, self.df['name'].iloc[index] + '.nrrd')
+        entry = self.df.iloc[index]
+        path = os.path.join(self.root_dir, entry['name'] + '.nrrd')
+        
         img, _ = nrrd.read(path)
-
         img = torch.from_numpy(img)
 
         #  min-max normalized to the range between -1 and 1
@@ -57,8 +58,10 @@ class AllCTsDataset(Dataset):
 
         img = img.unsqueeze(0).float()
         img = self.resize(img)
+
+        cond = torch.tensor([entry['quality']]).float()
        
-        return {'data': img}
+        return {'data': img, 'cond': cond}
 
     def get_named_item(self, item_name, vmin=0, vmax=1, path=None, show=True):
         if path is None:
@@ -95,9 +98,7 @@ class AllCTsDataset(Dataset):
         nrrd.write(save_path, item)
 
 if __name__ == '__main__':
-    dataset = AllCTsDataset(root_dir='data/allcts-global-gen-01', split='all')
+    dataset = AllCTsDataset(root_dir='data/AllCTs_nrrd_global', split='all')
     print(len(dataset))
-    item = dataset.__getitem__(0)
-
-    dataset.show_item(item['data'].squeeze(0).numpy())
+    print(dataset[0]['cond'])
     

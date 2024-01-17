@@ -17,21 +17,6 @@ def run(cfg: DictConfig):
         cfg.model.results_folder = os.path.join(
             cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
 
-    # if cfg.model.denoising_fn == 'Unet3D':
-    #     model = Unet3D(
-    #         dim=cfg.model.diffusion_img_size,
-    #         dim_mults=cfg.model.dim_mults,
-    #         channels=cfg.model.diffusion_num_channels,
-    #     ).cuda()
-    # elif cfg.model.denoising_fn == 'UNet':
-    #     model = UNet(
-    #         in_ch=cfg.model.diffusion_num_channels,
-    #         out_ch=cfg.model.diffusion_num_channels,
-    #         spatial_dims=3
-    #     ).cuda()
-    # else:
-    #     raise ValueError(f"Model {cfg.model.denoising_fn} doesn't exist")
-
     wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
 
     wandb.config.update(OmegaConf.to_container(cfg.dataset))
@@ -41,6 +26,7 @@ def run(cfg: DictConfig):
             dim=cfg.model.diffusion_img_size,
             dim_mults=cfg.model.dim_mults,
             channels=cfg.model.diffusion_num_channels,
+            cond_dim=cfg.model.cond_dim,
         ).cuda()
 
     diffusion = GaussianDiffusion(
@@ -59,6 +45,8 @@ def run(cfg: DictConfig):
 
     train_dataset, *_ = get_dataset(cfg)
 
+    conditioned = False if cfg.model.cond_dim is None else True
+
     trainer = Trainer(
         diffusion,
         cfg=cfg,
@@ -73,6 +61,7 @@ def run(cfg: DictConfig):
         num_sample_rows=cfg.model.num_sample_rows,
         results_folder=cfg.model.results_folder,
         num_workers=cfg.model.num_workers,
+        conditioned=conditioned,
     )
 
     if cfg.model.load_milestone:

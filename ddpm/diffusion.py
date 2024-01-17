@@ -978,6 +978,7 @@ class Trainer(object):
         num_sample_rows=1,
         max_grad_norm=None,
         num_workers=20,
+        conditioned=False,
     ):
         super().__init__()
         self.model = diffusion_model
@@ -1025,6 +1026,8 @@ class Trainer(object):
         self.num_sample_rows = num_sample_rows
         self.results_folder = Path(results_folder)
         self.results_folder.mkdir(exist_ok=True, parents=True)
+
+        self.conditioned = conditioned
 
         self.reset_parameters()
 
@@ -1074,13 +1077,20 @@ class Trainer(object):
 
         while self.step < self.train_num_steps:
             for i in range(self.gradient_accumulate_every):
-                data = next(self.dl)['data'].cuda()
+                item = next(self.dl)
+                data = item['data'].cuda()
+                
+                if not self.conditioned:
+                    cond = None
+                else:
+                    cond = item['cond'].cuda()
 
                 with autocast(enabled=self.amp):
                     loss = self.model(
                         data,
                         prob_focus_present=prob_focus_present,
-                        focus_present_mask=focus_present_mask
+                        focus_present_mask=focus_present_mask,
+                        cond=cond,
                     )
 
                     self.scaler.scale(

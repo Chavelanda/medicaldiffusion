@@ -1,41 +1,41 @@
 seed: 1234
 batch_size: 2
-num_workers: 2
+num_workers: 24
 
-accelerator: cpu
-devices: auto
+accelerator: cuda
+devices: 1
 accumulate_grad_batches: 1
-default_root_dir: C:/Users/giach/OneDrive/Documenti/Uni/Magistrale/Tesi/medicaldiffusion/checkpoints/vq_gan_3d
+default_root_dir: checkpoints/vq_gan_3d
 default_root_dir_postfix: ''
-resume: False
-wandb_project: medicaldiffusion
-wandb_entity: chavelanda
-run_name: test-allcts-global
-max_steps: 4
-max_epochs: 10
+resume: True
+checkpoint_path: checkpoints/vq_gan_3d/AllCTs/allcts-global-vqgan-06-resume/train-epoch=104-step=49560.ckpt
+
+max_steps: 150000
+max_epochs: -1
 precision: 32
 gradient_clip_val: 1.0
 
-
-embedding_dim: 128 #256
-n_codes: 1024 # 2048 # Number of codes in the codebook
-n_hiddens: 64 # 240 # Number of channels of the input in the first conv before encoding 
+embedding_dim: 8 #256
+n_codes: 16384 # 2048 # Number of codes in the codebook
+n_hiddens: 16 # 240 # Number of channels of the input in the first conv before encoding 
 lr: 3e-4
-downsample: [2, 2, 2] # [4,4,4]
+downsample: [4, 4, 4] # [4,4,4]
 disc_channels: 64
 disc_layers: 3
-discriminator_iter_start: 50000
+discriminator_iter_start: 150000
 disc_loss_type: hinge
 image_gan_weight: 1.0
 video_gan_weight: 1.0
 l1_weight: 4.0
-gan_feat_weight: 0.0
-perceptual_weight: 0.0
+gan_feat_weight: 1.0
+perceptual_weight: 1.0
 i3d_feat: False
 restart_thres: 1.0
 no_random_restart: False
 norm_type: group
 padding_type: replicate
-num_groups: 32
+num_groups: 16
 
-
+wandb_entity: 
+wandb_project: 
+run_name: 

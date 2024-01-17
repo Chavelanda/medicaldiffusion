@@ -8,9 +8,7 @@ accumulate_grad_batches: 1
 default_root_dir: C:/Users/giach/OneDrive/Documenti/Uni/Magistrale/Tesi/medicaldiffusion/checkpoints/retrieval
 default_root_dir_postfix: ''
 resume: True
-wandb_project: medicaldiffusion
-wandb_entity: chavelanda
-run_name: test-003
+
 max_steps: 3
 max_epochs: 1
 precision: 32
@@ -20,4 +18,6 @@ lr: 3e-4
 resnet_type: resnet10
 pretrain_path: 
 
-
+wandb_entity: 
+wandb_project: 
+run_name:

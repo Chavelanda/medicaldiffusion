@@ -1,4 +1,4 @@
-vqgan_ckpt: 
+vqgan_ckpt: checkpoints/vq_gan_3d/AllCTs/allcts-global-vqgan-128.2/train-epoch=314-step=148680.ckpt
 
 # Have to be derived from VQ-GAN Latent space dimensions
 diffusion_img_size: 32
@@ -7,23 +7,29 @@ diffusion_num_channels: 8
 dim_mults: 
 results_folder: checkpoints/ddpm
 results_folder_postfix: ''
-load_milestone: False
+load_milestone: 
 
-batch_size: 40
+batch_size: 10
 num_workers: 24
 objective: pred_x0
-save_and_sample_every: 1000
+save_and_sample_every: 2000
 train_lr: 1e-4
 timesteps: 300 # number of steps
 sampling_timesteps: 250 # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
 loss_type: l1 # L1 or L2
-train_num_steps: 150000 # total training steps
+train_num_steps: 50000 # total training steps
 gradient_accumulate_every: 2 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
-num_sample_rows: 1
+num_sample_rows: 5
 gpus: 0
 
-wandb_project: medicaldiffusion
-wandb_entity: chavelanda
-run_name: test-diffusion-001
+cond_dim: null # Dimension of the condition. Write 'null' for unconditional training
+
+n_samples: 1000 # Number of samples to generate. Only used in generate/generate.py
+
+wandb_entity:
+wandb_project:  
+run_name: 
+
+

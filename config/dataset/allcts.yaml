@@ -1,6 +1,8 @@
 name: AllCTs
 root_dir: data/AllCTs_nrrd_global
-resize_d: 1
-resize_h: 1
-resize_w: 1
+resize_d: 4
+resize_h: 4
+resize_w: 4
 image_channels: 1
+
+split: train-val

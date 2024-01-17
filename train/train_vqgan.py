@@ -43,10 +43,10 @@ def run(cfg: DictConfig):
     model = VQGAN(cfg)
 
     callbacks = []
-    callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
+    callbacks.append(ModelCheckpoint(monitor='train/recon_loss',
                      save_top_k=3, mode='min', dirpath=base_dir, filename='latest_checkpoint'))
-    callbacks.append(ModelCheckpoint(every_n_train_steps=1416,
-                     save_top_k=-1, dirpath=base_dir, filename='train-{epoch}-{step}'))
+    # callbacks.append(ModelCheckpoint(every_n_train_steps=1416,
+    #                  save_top_k=-1, dirpath=base_dir, filename='train-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_train_steps=14160, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
 

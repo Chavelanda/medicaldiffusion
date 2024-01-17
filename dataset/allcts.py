@@ -1,6 +1,4 @@
 import os
-import glob
-import json
 
 import torch
 from torch.utils.data import Dataset
@@ -15,7 +13,7 @@ class AllCTsDataset(Dataset):
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', augmentation=False,
                  resize_d=1, resize_h=1, resize_w=1):
         
-        assert split in ['all', 'train', 'val', 'test'], 'Invalid split: {}'.format(split)
+        assert split in ['all', 'train', 'val', 'test', 'train-val'], 'Invalid split: {}'.format(split)
 
         self.root_dir = root_dir
 
@@ -24,7 +22,9 @@ class AllCTsDataset(Dataset):
         self.df['name'] = self.df['name'].astype(str)
 
         # Take only the required split
-        if split != 'all':
+        if split == 'train-val':
+            self.df = self.df[self.df['split'] != 'test']
+        elif split != 'all':
             self.df = self.df[self.df['split'] == split]
 
         # Read one 3d image and define sizes

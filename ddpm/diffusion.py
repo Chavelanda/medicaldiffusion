@@ -389,6 +389,7 @@ class Unet3D(nn.Module):
         attn_heads=8,
         attn_dim_head=32,
         use_bert_text_cond=False,
+        use_class_cond=False,
         init_dim=None,
         init_kernel_size=7,
         use_sparse_linear_attn=True,
@@ -436,18 +437,32 @@ class Unet3D(nn.Module):
             nn.Linear(time_dim, time_dim)
         )
 
-        # text conditioning
+        # conditioning
+        assert not (use_bert_text_cond and use_class_cond), 'cannot use both bert text cond and class cond'
+        self.has_cond = exists(cond_dim) or use_bert_text_cond or use_class_cond
 
-        self.has_cond = exists(cond_dim) or use_bert_text_cond
-        cond_dim = BERT_MODEL_DIM if use_bert_text_cond else cond_dim
+        # class conditioning
+        self.use_class_cond = use_class_cond
+        n_classes = cond_dim
+        self.class_cond_mlp = nn.Sequential(
+            nn.Linear(n_classes, 1),  # new layer to transform one-hot encoding to single value
+            SinusoidalPosEmb(dim),
+            nn.Linear(dim, time_dim),
+            nn.GELU(),
+            nn.Linear(time_dim, time_dim)
+        ) if use_class_cond else None
+        
+        # text conditioning        
+        cond_dim = BERT_MODEL_DIM if use_bert_text_cond else time_dim if use_class_cond else cond_dim
 
+        # null conditioning embedding
         self.null_cond_emb = nn.Parameter(
             torch.randn(1, cond_dim)) if self.has_cond else None
 
+        # final cond_dim
         cond_dim = time_dim + int(cond_dim or 0)
 
         # layers
-
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
 
@@ -544,10 +559,16 @@ class Unet3D(nn.Module):
         # classifier free guidance
 
         if self.has_cond:
+            # embed cond           
+            cond = self.class_cond_mlp(cond) if self.use_class_cond else cond
+
+            # mask cond with null_cond_prob
             batch, device = x.shape[0], x.device
             mask = prob_mask_like((batch,), null_cond_prob, device=device)
             cond = torch.where(rearrange(mask, 'b -> b 1'),
                                self.null_cond_emb, cond)
+            
+            # concatenate time and cond embeddings
             t = torch.cat((t, cond), dim=-1)
 
         h = []
@@ -1080,10 +1101,7 @@ class Trainer(object):
                 item = next(self.dl)
                 data = item['data'].cuda()
                 
-                if not self.conditioned:
-                    cond = None
-                else:
-                    cond = item['cond'].cuda()
+                cond = item['cond'].cuda() if self.conditioned else None
 
                 with autocast(enabled=self.amp):
                     loss = self.model(
@@ -1119,9 +1137,12 @@ class Trainer(object):
                     milestone = self.step // self.save_and_sample_every
                     num_samples = self.num_sample_rows ** 2
                     batches = num_to_groups(num_samples, self.batch_size)
+                    # FIX CASE NUM SAMPLES > BATCH SIZE
+                    sample_cond = self.ds.get_cond(batch_size=batches[-1]).cuda() if self.conditioned else None
+                    print(sample_cond)
 
                     all_videos_list = list(
-                        map(lambda n: self.ema_model.sample(batch_size=n), batches))
+                        map(lambda n: self.ema_model.sample(batch_size=n, cond=sample_cond), batches))
                     all_videos_list = torch.cat(all_videos_list, dim=0)
 
                 all_videos_list = F.pad(all_videos_list, (2, 2, 2, 2))
@@ -1130,7 +1151,7 @@ class Trainer(object):
                     all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i=self.num_sample_rows)
                 video_path = str(self.results_folder / str(f'{milestone}.gif'))
                 video_tensor_to_gif(one_gif, video_path)
-                log = {**log, 'sample': video_path}
+                log = {**log, 'sample_path': video_path}
 
                 # Selects one random 2D image from each 3D Image
                 B, C, D, H, W = all_videos_list.shape

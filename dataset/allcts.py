@@ -41,7 +41,11 @@ class AllCTsDataset(Dataset):
         # Resize transform
         self.resize = tio.Resample((self.resize_d, self.resize_h, self.resize_w))
 
-        # Augmentation transform
+        # Condition
+        self.cond_dim = self.df['quality'].nunique()
+
+        # One-hot encoding of the condition
+        self.df = pd.get_dummies(self.df, columns=['quality'])
 
     def __len__(self):
         return len(self.df)
@@ -59,10 +63,18 @@ class AllCTsDataset(Dataset):
         img = img.unsqueeze(0).float()
         img = self.resize(img)
 
-        cond = torch.tensor([entry['quality']]).float()
+        cond = entry[2:].to_numpy().astype(float)
+
+        cond = torch.tensor(cond).float()
        
         return {'data': img, 'cond': cond}
-
+    
+    def get_cond(self, batch_size=1):
+        # Tensor of zeros with one in a random position for each element of the batch
+        cond = torch.zeros((batch_size, self.cond_dim))
+        cond[torch.arange(batch_size), torch.randint(0, self.cond_dim, (batch_size,))] = 1
+        return cond
+        
     def get_named_item(self, item_name, vmin=0, vmax=1, path=None, show=True):
         if path is None:
             path = os.path.join(self.root_dir, item_name + '.nrrd')
@@ -100,5 +112,5 @@ class AllCTsDataset(Dataset):
 if __name__ == '__main__':
     dataset = AllCTsDataset(root_dir='data/AllCTs_nrrd_global', split='all')
     print(len(dataset))
-    print(dataset[0]['cond'])
+    print(dataset.get_cond(1))
     

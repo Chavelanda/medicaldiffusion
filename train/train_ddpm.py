@@ -22,11 +22,24 @@ def run(cfg: DictConfig):
     wandb.config.update(OmegaConf.to_container(cfg.dataset))
     wandb.config.update(OmegaConf.to_container(cfg.model))
 
+    train_dataset, *_ = get_dataset(cfg)
+
+    # Define conditioning parameters
+    if cfg.model.cond:
+        # Should be the number of classes if using class cond
+        # Should be the dim of the provided cond if not
+        cond_dim = train_dataset.cond_dim 
+        use_class_cond = cfg.model.use_class_cond
+    else:
+        cond_dim = None
+        use_class_cond = False
+
     model = Unet3D(
             dim=cfg.model.diffusion_img_size,
             dim_mults=cfg.model.dim_mults,
             channels=cfg.model.diffusion_num_channels,
-            cond_dim=cfg.model.cond_dim,
+            cond_dim=cond_dim,
+            use_class_cond=use_class_cond,
         ).cuda()
 
     diffusion = GaussianDiffusion(
@@ -43,10 +56,6 @@ def run(cfg: DictConfig):
 
     wandb.watch(diffusion)
 
-    train_dataset, *_ = get_dataset(cfg)
-
-    conditioned = False if cfg.model.cond_dim is None else True
-
     trainer = Trainer(
         diffusion,
         cfg=cfg,
@@ -61,7 +70,7 @@ def run(cfg: DictConfig):
         num_sample_rows=cfg.model.num_sample_rows,
         results_folder=cfg.model.results_folder,
         num_workers=cfg.model.num_workers,
-        conditioned=conditioned,
+        conditioned=cfg.model.cond,
     )
 
     if cfg.model.load_milestone:

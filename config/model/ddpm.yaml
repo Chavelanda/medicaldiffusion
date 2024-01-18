@@ -21,10 +21,12 @@ train_num_steps: 50000 # total training steps
 gradient_accumulate_every: 2 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
-num_sample_rows: 5
+num_sample_rows: 1
 gpus: 0
 
-cond_dim: null # Dimension of the condition. Write 'null' for unconditional training
+cond: True # Conditional training?
+use_class_cond: True # If true, one-hot class labels are embedded and used as conditioning. If false, condition is used as it is.
+# TODO text_cond using bert
 
 n_samples: 1000 # Number of samples to generate. Only used in generate/generate.py
 

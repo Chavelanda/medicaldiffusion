@@ -6,3 +6,4 @@ resize_w: 4
 image_channels: 1
 
 split: train-val
+val_split: test

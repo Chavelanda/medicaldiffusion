@@ -9,7 +9,7 @@ DATASET_CLASSES = {
     'LIDC': (LIDCDataset, {'train': {'augmentation': True}, 'val': {'augmentation': False}}),
     'SKULL-BREAK': (SKULLBREAKDataset, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'SKULL-BREAK-TRIPLET': (SKULLBREAKDatasetTriplet, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
-    'AllCTs': (AllCTsDataset, {'train': {'split': 'all', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'split': 'val', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
+    'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}, 'val': {'split': 'test', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}}),
     'DEFAULT': (DEFAULTDataset, {'train': {}, 'val': {}})
 }
 
@@ -23,8 +23,10 @@ def get_dataset(cfg):
         if key in cfg.dataset:
             train_params[key] = cfg.dataset[key]
     for key in val_params:
-        if key in cfg.dataset:
-            val_params[key] = cfg.dataset[key]
+        if key.startswith('val_') and key in cfg.dataset:
+            ds_key = key[4:]
+            val_params[key] = cfg.dataset[ds_key]
+    print(train_params, val_params)
     train_dataset = DatasetClass(**train_params)
     val_dataset = DatasetClass(**val_params)
     if cfg.dataset.name == 'MRNet':

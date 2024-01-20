@@ -984,6 +984,7 @@ class Trainer(object):
         cfg,
         folder=None,
         dataset=None,
+        val_dataset=None,
         *,
         ema_decay=0.995,
         num_frames=16,
@@ -994,7 +995,7 @@ class Trainer(object):
         amp=False,
         step_start_ema=2000,
         update_ema_every=10,
-        save_and_sample_every=1000,
+        validate_save_and_sample_every=1000,
         results_folder='./results',
         num_sample_rows=1,
         max_grad_norm=None,
@@ -1008,7 +1009,7 @@ class Trainer(object):
         self.update_ema_every = update_ema_every
 
         self.step_start_ema = step_start_ema
-        self.save_and_sample_every = save_and_sample_every
+        self.validate_save_and_sample_every = validate_save_and_sample_every
 
         self.batch_size = train_batch_size
         self.image_size = diffusion_model.image_size
@@ -1022,12 +1023,17 @@ class Trainer(object):
         self.cfg = cfg
         if dataset:
             self.ds = dataset
+            self.val_dataset = val_dataset
         else:
             assert folder is not None, 'Provide a folder path to the dataset'
             self.ds = Dataset(folder, image_size,
                               channels=channels, num_frames=num_frames)
+            self.val_dataset = Dataset(folder, image_size,
+                              channels=channels, num_frames=num_frames)
         dl = DataLoader(self.ds, batch_size=train_batch_size,
                         shuffle=True, pin_memory=True, num_workers=num_workers)
+        self.val_dl = DataLoader(self.val_dataset, batch_size=train_batch_size,
+                                  shuffle=False, pin_memory=True, num_workers=num_workers)
 
         self.len_dataloader = len(dl)
         self.dl = cycle(dl)
@@ -1130,9 +1136,10 @@ class Trainer(object):
             if self.step % self.update_ema_every == 0:
                 self.step_ema()
 
-            if self.step != 0 and self.step % self.save_and_sample_every == 0:
+            if self.step != 0 and self.step % self.validate_save_and_sample_every == 0:
                 self.ema_model.eval()
 
+                # Sample
                 with torch.no_grad():
                     milestone = self.step // self.save_and_sample_every
                     num_samples = self.num_sample_rows ** 2
@@ -1172,9 +1179,28 @@ class Trainer(object):
                     plt.imshow(frame[0], cmap='gray')
                     plt.savefig(path)
 
+                # Save
                 self.save(milestone)
 
+                # Validate
+                with torch.no_grad():
+                    for item in self.val_dl:
+                        data = item['data'].cuda()
+                        cond = item['cond'].cuda() if self.conditioned else None
+
+                        with autocast(enabled=self.amp):
+                            val_loss = self.ema_model(
+                                data,
+                                prob_focus_present=prob_focus_present,
+                                focus_present_mask=focus_present_mask,
+                                cond=cond,
+                            )
+                
+                log = {**log, 'val_loss': val_loss.item()}
+
             log = {**log, 'global_step': self.step}
+
+            # Log
             log_fn(log)
             
             self.step += 1

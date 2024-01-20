@@ -22,7 +22,7 @@ def run(cfg: DictConfig):
     wandb.config.update(OmegaConf.to_container(cfg.dataset))
     wandb.config.update(OmegaConf.to_container(cfg.model))
 
-    train_dataset, *_ = get_dataset(cfg)
+    train_dataset, val_dataset, _ = get_dataset(cfg)
 
     # Define conditioning parameters
     if cfg.model.cond:
@@ -60,8 +60,9 @@ def run(cfg: DictConfig):
         diffusion,
         cfg=cfg,
         dataset=train_dataset,
+        val_dataset=val_dataset,
         train_batch_size=cfg.model.batch_size,
-        save_and_sample_every=cfg.model.save_and_sample_every,
+        validate_save_and_sample_every=cfg.model.validate_save_and_sample_every,
         train_lr=cfg.model.train_lr,
         train_num_steps=cfg.model.train_num_steps,
         gradient_accumulate_every=cfg.model.gradient_accumulate_every,

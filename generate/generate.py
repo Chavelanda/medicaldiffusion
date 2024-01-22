@@ -13,11 +13,11 @@ from train.get_dataset import get_dataset
 def run(cfg: DictConfig):
     torch.cuda.set_device(cfg.model.gpus)
     with open_dict(cfg):
-        cfg.model.results_folder = os.path.join(
-            cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
+        cfg.model.data_folder = os.path.join(
+            cfg.model.data_folder, cfg.model.run_name)
 
-    if not os.path.exists(cfg.model.results_folder):
-        os.makedirs(cfg.model.results_folder)
+    if not os.path.exists(cfg.model.data_folder):
+        os.makedirs(cfg.model.data_folder)
 
     wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
 
@@ -37,27 +37,37 @@ def run(cfg: DictConfig):
         num_frames=cfg.model.diffusion_depth_size,
         channels=cfg.model.diffusion_num_channels,
         timesteps=cfg.model.timesteps,
-        # sampling_timesteps=cfg.model.sampling_timesteps,
-        loss_type=cfg.model.loss_type,
-        # objective=cfg.objective
     ).cuda()
 
-    if cfg.model.load_milestone:
-        data = torch.load(cfg.model.load_milestone)
-        diffusion.load_state_dict(data['model'])
-
-    dataset, *_ = get_dataset(cfg)
+    data = torch.load(cfg.model.milestone)
+    diffusion.load_state_dict(data['ema'])
 
     n_samples = cfg.model.n_samples
     steps = n_samples // cfg.model.batch_size
 
+    conditioned = cfg.model.conditioned
+    class_idx = cfg.model.class_idx
+    if class_idx:
+        random = False
+        class_name = f'_{class_idx}'
+    else:
+        class_name = ''
+
+    ds, *_ = get_dataset(cfg) 
+
+    name_prefix = cfg.model.name_prefix if name_prefix else ''
+
     with torch.no_grad():
         for i in tqdm(range(steps), desc='Generating samples'):
-            samples = diffusion.sample(batch_size=cfg.model.batch_size).cpu()
+            
+            cond = ds.get_cond(batch_size=cfg.model.batch_size, random=random, class_idx=class_idx).cuda() if conditioned else None    
+            samples = diffusion.sample(cond=cond, batch_size=cfg.model.batch_size).cpu()
+            
             for j, sample in enumerate(samples):
-                filename = f'{i*cfg.model.batch_size + j}'
-                save_path = os.path.join(cfg.model.results_folder, filename + '.nrrd')
-                dataset.save_to_nrrd(filename, sample, save_path=save_path)
+                filename = f'{name_prefix}{i*cfg.model.batch_size + j}{class_name}'
+                save_path = os.path.join(cfg.model.data_folder, filename + '.nrrd')
+                ds.save(filename, sample, save_path=save_path)
+            
             wandb.log({'step': i})
     
 

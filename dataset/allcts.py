@@ -69,10 +69,14 @@ class AllCTsDataset(Dataset):
        
         return {'data': img, 'cond': cond}
     
-    def get_cond(self, batch_size=1):
+    def get_cond(self, batch_size=1, random=True, class_idx=None):
         # Tensor of zeros with one in a random position for each element of the batch
         cond = torch.zeros((batch_size, self.cond_dim))
-        cond[torch.arange(batch_size), torch.randint(0, self.cond_dim, (batch_size,))] = 1
+        if random:
+            cond[torch.arange(batch_size), torch.randint(0, self.cond_dim, (batch_size,))] = 1
+        else:
+            assert class_idx is not None, 'If random is False, class_idx must be specified'
+            cond[:, class_idx] = 1
         return cond
         
     def get_named_item(self, item_name, vmin=0, vmax=1, path=None, show=True):
@@ -92,20 +96,21 @@ class AllCTsDataset(Dataset):
         index = self.df[self.df['name'] == item_name].index[0]
         
         return self.__getitem__(index)
-
-    def save_to_nrrd(self, item_name, item, save_path=None):
+    
+    @staticmethod
+    def save(item_name, item, save_path):
         # Transform the item to numpy array
-        item = item.numpy()
+        if isinstance(item, torch.Tensor):
+            item = item.numpy()
 
         # Remove channel dimension if present
         if len(item.shape) == 4:
             item = item.squeeze(0)
 
-        #  min-max normalized to the range between 0 and 1
+        #  min-max normalize to the range between 0 and 1
         item = (item - item.min()) / (item.max() - item.min())
         
-        if save_path is None:
-            save_path = os.path.join(self.root_dir, item_name + '.nrrd')
+        save_path = os.path.join(save_path, item_name + '.nrrd')
         
         nrrd.write(save_path, item)
 

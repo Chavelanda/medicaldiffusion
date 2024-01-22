@@ -559,8 +559,8 @@ class Unet3D(nn.Module):
         # classifier free guidance
 
         if self.has_cond:
-            # embed cond           
-            cond = self.class_cond_mlp(cond) if self.use_class_cond else cond
+            # embed cond
+            cond = torch.squeeze(self.class_cond_mlp(cond)) if self.use_class_cond else cond
 
             # mask cond with null_cond_prob
             batch, device = x.shape[0], x.device
@@ -1141,7 +1141,7 @@ class Trainer(object):
 
                 # Sample
                 with torch.no_grad():
-                    milestone = self.step // self.save_and_sample_every
+                    milestone = self.step // self.validate_save_and_sample_every
                     num_samples = self.num_sample_rows ** 2
                     batches = num_to_groups(num_samples, self.batch_size)
                     # FIX CASE NUM SAMPLES > BATCH SIZE

@@ -1,6 +1,8 @@
 import os
+import csv
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
+import numpy as np
 
 from tqdm import tqdm
 import wandb
@@ -47,26 +49,38 @@ def run(cfg: DictConfig):
 
     conditioned = cfg.model.conditioned
     class_idx = cfg.model.class_idx
-    if class_idx:
-        random = False
-        class_name = f'_{class_idx}'
-    else:
-        class_name = ''
+    random = False if class_idx else True
+
 
     ds, *_ = get_dataset(cfg) 
 
     name_prefix = cfg.model.name_prefix if name_prefix else ''
 
+    # Create metadata csv if not existing
+    metadata_path = os.path.join(cfg.model.data_folder, 'metadata.csv')
+    with open(metadata_path, 'a', newline='') as f:
+        writer = csv.writer(f)
+        # If the file is empty, write the header
+        if os.stat(metadata_path).st_size == 0:
+            writer.writerow(['name', 'split', 'quality'])
+
     with torch.no_grad():
         for i in tqdm(range(steps), desc='Generating samples'):
             
-            cond = ds.get_cond(batch_size=cfg.model.batch_size, random=random, class_idx=class_idx).cuda() if conditioned else None    
+            cond = ds.get_cond(batch_size=cfg.model.batch_size, random=random, class_idx=class_idx).cuda() if conditioned else None
+            class_names = ds.get_class_name_from_cond(cond) if conditioned else ['null' for _ in range(cfg.model.batch_size)]
+
             samples = diffusion.sample(cond=cond, batch_size=cfg.model.batch_size).cpu()
             
             for j, sample in enumerate(samples):
-                filename = f'{name_prefix}{i*cfg.model.batch_size + j}{class_name}'
+                filename = f'{name_prefix}{i*cfg.model.batch_size + j}{class_names[j]}'
                 save_path = os.path.join(cfg.model.data_folder, filename + '.nrrd')
                 ds.save(filename, sample, save_path=save_path)
+
+                # Append metadata to csv
+                with open(metadata_path, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([filename, 'train', class_names[j]])
             
             wandb.log({'step': i})
     

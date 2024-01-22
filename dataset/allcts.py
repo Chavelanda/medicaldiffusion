@@ -11,7 +11,7 @@ from dataset.utils import show_item
 
 class AllCTsDataset(Dataset):
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', augmentation=False,
-                 resize_d=1, resize_h=1, resize_w=1):
+                 resize_d=1, resize_h=1, resize_w=1, conditioned=True):
         
         assert split in ['all', 'train', 'val', 'test', 'train-val'], 'Invalid split: {}'.format(split)
 
@@ -42,6 +42,7 @@ class AllCTsDataset(Dataset):
         self.resize = tio.Resample((self.resize_d, self.resize_h, self.resize_w))
 
         # Condition
+        self.conditioned = conditioned
         self.cond_dim = self.df['quality'].nunique()
 
         # One-hot encoding of the condition
@@ -63,9 +64,11 @@ class AllCTsDataset(Dataset):
         img = img.unsqueeze(0).float()
         img = self.resize(img)
 
-        cond = entry[2:].to_numpy().astype(float)
-
-        cond = torch.tensor(cond).float()
+        if self.conditioned:
+            cond = entry[2:].to_numpy().astype(float)
+            cond = torch.tensor(cond).float()
+        else:
+            cond = None
        
         return {'data': img, 'cond': cond}
     
@@ -78,6 +81,10 @@ class AllCTsDataset(Dataset):
             assert class_idx is not None, 'If random is False, class_idx must be specified'
             cond[:, class_idx] = 1
         return cond
+    
+    def get_class_name_from_cond(self, cond):
+        quality = torch.argmax(cond, dim=1).cpu().numpy() + 2
+        return [f'{q}' for q in quality]
         
     def get_named_item(self, item_name, vmin=0, vmax=1, path=None, show=True):
         if path is None:

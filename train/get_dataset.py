@@ -1,4 +1,4 @@
-from dataset import MRNetDataset, BRATSDataset, ADNIDataset, DUKEDataset, LIDCDataset, DEFAULTDataset, SKULLBREAKDataset, SKULLBREAKDatasetTriplet, AllCTsDataset
+from dataset import MRNetDataset, BRATSDataset, ADNIDataset, DUKEDataset, LIDCDataset, DEFAULTDataset, SKULLBREAKDataset, SKULLBREAKDatasetTriplet, AllCTsDataset, AllCts_MSSSIM
 from torch.utils.data import WeightedRandomSampler
 
 DATASET_CLASSES = {
@@ -10,6 +10,7 @@ DATASET_CLASSES = {
     'SKULL-BREAK': (SKULLBREAKDataset, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'SKULL-BREAK-TRIPLET': (SKULLBREAKDatasetTriplet, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}, 'val': {'split': 'test', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}}),
+    'allcts-msssim': (AllCts_MSSSIM, {'train': {'split': 'train-val', 'samples': 1000, 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}, 'val': {'split': 'test', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}}),
     'DEFAULT': (DEFAULTDataset, {'train': {}, 'val': {}})
 }
 

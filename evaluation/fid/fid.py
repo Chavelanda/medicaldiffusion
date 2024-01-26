@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import numpy as np
@@ -10,8 +11,10 @@ def compute_summary_stats(x):
     return mu, sigma
 
 def save_stats(name, mu, sigma, path):
-    np.save(path + name + '_mu.npy', mu)
-    np.save(path + name + '_sigma.npy', sigma)
+    mu_path = os.path.join(path, name + '_mu.npy')
+    sigma_path = os.path.join(path, name + '_sigma.npy')
+    np.save(mu_path, mu)
+    np.save(sigma_path, sigma)
 
 def load_stats(name, path):
     mu = np.load(path + name + '_mu.npy')

@@ -24,9 +24,9 @@ def get_dataset(cfg):
         if key in cfg.dataset:
             train_params[key] = cfg.dataset[key]
     for key in val_params:
-        if key.startswith('val_') and key in cfg.dataset:
-            ds_key = key[4:]
-            val_params[key] = cfg.dataset[ds_key]
+        config_key = 'val_' + key
+        if config_key in cfg.dataset:
+            val_params[key] = cfg.dataset[config_key]
     print(train_params, val_params)
     train_dataset = DatasetClass(**train_params)
     val_dataset = DatasetClass(**val_params)

@@ -26,7 +26,7 @@ def run(cfg: DictConfig):
         'no_cuda': not cfg.model.cuda
     }
 
-    model = resnet_gap(cfg.model.resnet, pretrain_path='../medicalnet/pretrain/', **model_params)
+    model = resnet_gap(cfg.model.resnet, pretrain_path='medicalnet/pretrain/', **model_params)
 
     device = 'cuda' if cfg.model.cuda else 'cpu'
 

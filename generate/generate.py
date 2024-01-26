@@ -26,10 +26,22 @@ def run(cfg: DictConfig):
     wandb.config.update(OmegaConf.to_container(cfg.dataset))
     wandb.config.update(OmegaConf.to_container(cfg.model))
 
+    ds, *_ = get_dataset(cfg) 
+
+    # Define conditioning parameters
+    if cfg.model.cond:
+        cond_dim = ds.cond_dim 
+        use_class_cond = cfg.model.use_class_cond
+    else:
+        cond_dim = None
+        use_class_cond = False
+
     model = Unet3D(
             dim=cfg.model.diffusion_img_size,
             dim_mults=cfg.model.dim_mults,
             channels=cfg.model.diffusion_num_channels,
+            cond_dim=cond_dim,
+            use_class_cond=use_class_cond,
         ).cuda()
     
     diffusion = GaussianDiffusion(
@@ -47,14 +59,12 @@ def run(cfg: DictConfig):
     n_samples = cfg.model.n_samples
     steps = n_samples // cfg.model.batch_size
 
-    conditioned = cfg.model.conditioned
+    conditioned = cfg.model.cond
     class_idx = cfg.model.class_idx
-    random = False if class_idx else True
+    random = False if class_idx is not None else True
+    print('RANDOM', random)
 
-
-    ds, *_ = get_dataset(cfg) 
-
-    name_prefix = cfg.model.name_prefix if name_prefix else ''
+    name_prefix = cfg.model.name_prefix if cfg.model.name_prefix else ''
 
     # Create metadata csv if not existing
     metadata_path = os.path.join(cfg.model.data_folder, 'metadata.csv')
@@ -68,14 +78,15 @@ def run(cfg: DictConfig):
         for i in tqdm(range(steps), desc='Generating samples'):
             
             cond = ds.get_cond(batch_size=cfg.model.batch_size, random=random, class_idx=class_idx).cuda() if conditioned else None
+            print('COND',cond)
             class_names = ds.get_class_name_from_cond(cond) if conditioned else ['null' for _ in range(cfg.model.batch_size)]
 
             samples = diffusion.sample(cond=cond, batch_size=cfg.model.batch_size).cpu()
             
             for j, sample in enumerate(samples):
-                filename = f'{name_prefix}{i*cfg.model.batch_size + j}{class_names[j]}'
-                save_path = os.path.join(cfg.model.data_folder, filename + '.nrrd')
-                ds.save(filename, sample, save_path=save_path)
+                filename = f'{name_prefix}_{i*cfg.model.batch_size + j}_q{class_names[j]}'
+                
+                ds.save(filename, sample, save_path=cfg.model.data_folder)
 
                 # Append metadata to csv
                 with open(metadata_path, 'a', newline='') as f:

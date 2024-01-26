@@ -109,7 +109,7 @@ def ssim(img1, img2, window_size=11, window=None, size_average=True, full=False,
     return ret
 
 
-def ssim_3d(img1, img2, window_size=11, window=None, size_average=True, full=False, val_range=None):
+def ssim_3d(img1, img2, window_size=11, window=None, size_average=True, full=False, val_range=None, device='cpu'):
     # Value range can be different from 255. Other common ranges are 1 (sigmoid) and 2 (tanh).
     if val_range is None:
         if torch.max(img1) > 128:
@@ -129,7 +129,7 @@ def ssim_3d(img1, img2, window_size=11, window=None, size_average=True, full=Fal
     (_, channel, height, width, width2) = img1.size()
     if window is None:
         real_size = min(window_size, height, width, width2)
-        window = create_window(real_size, channel=channel, dim=3).to(img1.device)
+        window = create_window(real_size, channel=channel, dim=3).to(device)
 
     mu1 = F.conv3d(img1, window, padding=padd, groups=channel)
     mu2 = F.conv3d(img2, window, padding=padd, groups=channel)
@@ -197,8 +197,7 @@ def msssim(img1, img2, window_size=11, size_average=True, val_range=None, normal
 
 # Uses ssim_exact, i.e. numpy arrays in cpu
 # Why is it using that function and not 3dssim?
-def msssim_3d(img1, img2, window_size=11, size_average=True, val_range=None, normalize=False, tensor=False):
-    device = img1.device
+def msssim_3d(img1, img2, window_size=11, size_average=True, val_range=None, normalize=False, tensor=False, device='cpu'):
     weights = torch.FloatTensor(
         [0.0448, 0.2856, 0.3001, 0.2363, 0.1333]).to(device)
     levels = weights.size()[0]
@@ -206,7 +205,7 @@ def msssim_3d(img1, img2, window_size=11, size_average=True, val_range=None, nor
     mcs = []
     for _ in range(levels):
         if tensor:
-            sim, cs = ssim_3d(img1, img2, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+            sim, cs = ssim_3d(img1, img2, window_size=window_size, size_average=size_average, full=True, val_range=val_range, device=device)
         else:
             sim, cs = ssim_exact(img1.data.cpu().numpy(), img2.data.cpu().numpy())
         mssim.append(sim)
@@ -270,12 +269,13 @@ class MSSSIM(torch.nn.Module):
         return msssim(img1, img2, window_size=self.window_size, size_average=self.size_average)
 
 class MSSSIM_3d(torch.nn.Module):
-    def __init__(self, window_size=11, size_average=True, channel=3):
+    def __init__(self, window_size=11, size_average=True, channel=3, device='cpu'):
         super(MSSSIM_3d, self).__init__()
         self.window_size = window_size
         self.size_average = size_average
         self.channel = channel
+        self.device = device
 
     def forward(self, img1, img2):
         # TODO: store window between calls if possible
-        return msssim_3d(img1, img2, window_size=self.window_size, size_average=self.size_average)
+        return msssim_3d(img1, img2, window_size=self.window_size, size_average=self.size_average, device=self.device, tensor=False)

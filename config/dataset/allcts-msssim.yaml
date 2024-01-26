@@ -1,10 +1,13 @@
-root_dir: data/AllCTs/allcts-global-gen-01 # The root directory where your dataset is located.
+name: allcts-msssim                 # The name of the dataset.
+
+root_dir: data\AllCTs_nrrd_global   # The directory where your dataset is located.
 
 samples: 1000       # The number of pairs to sample from the dataset to generate the ms-ssim.
+
 resize_d: 4
 resize_h: 4
 resize_w: 4         # These parameters are used to resize the images in the dataset to a specific scale reduction.
 
 image_channels: 1   # The number of channels in the images (e.g., 1 for grayscale images, 3 for RGB images).
 
-split: 'all' # This parameter specifies which part of the dataset to use (e.g., 'all', 'train', 'test', 'validation').
+split: 'test' # This parameter specifies which part of the dataset to use (e.g., 'all', 'train', 'test', 'validation').

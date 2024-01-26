@@ -5,7 +5,7 @@ from dataset.allcts import AllCTsDataset
 class AllCts_MSSSIM(AllCTsDataset):
 
     def __init__(self, root_dir, split, resize_d=1, resize_h=1, resize_w=1, samples=1000):
-        super().__init__(root_dir=root_dir, split=split, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w)
+        super().__init__(root_dir=root_dir, split=split, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w, conditioned=False)
 
         self.samples = samples
 

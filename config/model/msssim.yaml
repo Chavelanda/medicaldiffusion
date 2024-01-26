@@ -1,12 +1,9 @@
-# MS-SSIM must be calculated on the CPU (currently)
+cuda: False         # Whether to use CUDA.
 
-results_folder: 'evaluation/msssim' # The base folder where results will be stored.
-
-batch_size: 1      # The batch size to use when creating the DataLoader.
 num_workers: 2     # The number of worker processes to use for data loading.
 window_size: 11     # The window size to use when calculating the MSSSIM.
 size_average: True  # Whether to average the MSSSIM over all pixels.
 
-wandb_entity:       # The name of the Weights & Biases entity (user or team) under which the project is located.
-wandb_project:      # The name of the Weights & Biases project where the run's results will be logged.
-run_name:           # The name of the current run. This is used to create a subfolder in results_folder for the current run's results.
+wandb_entity: chavelanda      # The name of the Weights & Biases entity (user or team) under which the project is located.
+wandb_project: medicaldiffusion     # The name of the Weights & Biases project where the run's results will be logged.
+run_name: msssim-test         # The name of the current run. This is used to create a subfolder in results_folder for the current run's results.

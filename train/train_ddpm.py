@@ -26,8 +26,6 @@ def run(cfg: DictConfig):
 
     # Define conditioning parameters
     if cfg.model.cond:
-        # Should be the number of classes if using class cond
-        # Should be the dim of the provided cond if not
         cond_dim = train_dataset.cond_dim 
         use_class_cond = cfg.model.use_class_cond
     else:

@@ -6,4 +6,5 @@ from dataset.duke import DUKEDataset
 from dataset.lidc import LIDCDataset
 from dataset.skull_break import SKULLBREAKDataset, SKULLBREAKDatasetTriplet
 from dataset.allcts import AllCTsDataset
+from dataset.allcts_msssim import AllCts_MSSSIM
 from dataset.default import DEFAULTDataset

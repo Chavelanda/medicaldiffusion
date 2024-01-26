@@ -1,1 +1,1 @@
-from fid.fid import *
+from evaluation.fid.fid import *

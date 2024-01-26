@@ -1,23 +1,24 @@
 gpus: 0 # The GPU device to use for computation.
-batch_size: 10 # The number of samples per batch.
+batch_size: 2 # The number of samples per batch.
 data_folder: data # The data directory. Data will be saved in data_folder + run_name
 
 # Denoiser and Gaussian diffusion parameters
-vqgan_ckpt: # The checkpoint file for the VQGAN model.
+vqgan_ckpt: checkpoints/vq_gan_3d/AllCTs/vqgan-02-resume/best_val.ckpt # The checkpoint file for the VQGAN model.
 diffusion_img_size: 32 # The size of the images for the diffusion process.
 diffusion_depth_size: 32 # The depth size for the diffusion process.
 diffusion_num_channels: 8 # The number of channels in the images for the diffusion process.
 dim_mults: # The dimension multipliers for the U-Net model.
 timesteps: 300 # The number of timesteps for the diffusion process.
 
-milestone: # The milestone file to load the model state from.
+milestone: checkpoints/ddpm/AllCTs/ddpm_03/model-16.pt # The milestone file to load the model state from.
 
-conditioned: True # A boolean indicating whether the model is conditioned on some input.
-class_idx: 3 # The class index for conditioning, if applicable. Leave empty for random conditioning
-name_prefix: cs # The prefix for the name of the output files.
+cond: True # A boolean indicating whether the model is conditioned on some input.
+use_class_cond: True
+class_idx: 4 # The class index for conditioning, if applicable. Leave empty for random conditioning
+name_prefix: ctg # The prefix for the name of the output files.
 
-n_samples: 1000 # The number of samples to generate.
+n_samples: 86 # The number of samples to generate.
 
-wandb_entity: # The Weights & Biases entity (user or team) under which the project is located.
-wandb_project: # The name of the Weights & Biases project.
-run_name: # The name of the current run.
+wandb_entity:  # The Weights & Biases entity (user or team) under which the project is located.
+wandb_project:  # The name of the Weights & Biases project.
+run_name:  # The name of the current run.

@@ -10,4 +10,4 @@ export CPATH="/usr/local/cuda-11.1/include:$CPATH"
 source .venv/bin/activate
 
 # Run Python script
-python -m generate.generate dataset=allcts model=ddpm
+python -m generate.generate model=generate dataset=allcts

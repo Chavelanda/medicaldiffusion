@@ -65,7 +65,8 @@ class AllCTsDataset(Dataset):
         img = self.resize(img)
 
         if self.conditioned:
-            cond = entry[2:].to_numpy().astype(float)
+            quality_items = entry[entry.index.str.startswith('quality')]
+            cond = quality_items.to_numpy().astype(float)
             cond = torch.tensor(cond).float()
         else:
             cond = None

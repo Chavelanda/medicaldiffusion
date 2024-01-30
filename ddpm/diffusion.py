@@ -445,10 +445,7 @@ class Unet3D(nn.Module):
         self.use_class_cond = use_class_cond
         n_classes = cond_dim
         self.class_cond_mlp = nn.Sequential(
-            nn.Linear(n_classes, 1),  # new layer to transform one-hot encoding to single value
-            SinusoidalPosEmb(dim),
-            nn.Linear(dim, time_dim),
-            nn.GELU(),
+            nn.Linear(n_classes, time_dim),  # new layer to transform one-hot encoding to single value
             nn.Linear(time_dim, time_dim)
         ) if use_class_cond else None
         
@@ -1120,7 +1117,7 @@ class Trainer(object):
                     self.scaler.scale(
                         loss / self.gradient_accumulate_every).backward()
 
-                print(f'Step {self.step}.{i}: {loss.item()}')
+                #print(f'Step {self.step}.{i}: {loss.item()}')
 
             log = {'loss': loss.item()}
 

@@ -12,14 +12,14 @@ from dataset.utils import show_item
 
 class AllCTsDataset(Dataset):
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', augmentation=False,
-                 resize_d=1, resize_h=1, resize_w=1, conditioned=True):
+                 resize_d=1, resize_h=1, resize_w=1, conditioned=True, metadata_name='metadata.csv'):
         
         assert split in ['all', 'train', 'val', 'test', 'train-val'], 'Invalid split: {}'.format(split)
 
         self.root_dir = root_dir
 
         # Read the CSV file as a DataFrame
-        self.df = pd.read_csv(os.path.join(root_dir, 'metadata.csv'))
+        self.df = pd.read_csv(os.path.join(root_dir, metadata_name))
         self.df['name'] = self.df['name'].astype(str)
 
         # Take only the required split

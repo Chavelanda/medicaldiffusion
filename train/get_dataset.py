@@ -9,7 +9,7 @@ DATASET_CLASSES = {
     'LIDC': (LIDCDataset, {'train': {'augmentation': True}, 'val': {'augmentation': False}}),
     'SKULL-BREAK': (SKULLBREAKDataset, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'SKULL-BREAK-TRIPLET': (SKULLBREAKDatasetTriplet, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
-    'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}, 'val': {'split': 'test', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}}),
+    'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4, 'metadata_name': 'metadata.csv'}}),
     'allcts-msssim': (AllCts_MSSSIM, {'train': {'split': 'train-val', 'samples': 1000, 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}, 'val': {'split': 'test', 'resize_d': 4, 'resize_h': 4, 'resize_w': 4}}),
     'DEFAULT': (DEFAULTDataset, {'train': {}, 'val': {}})
 }

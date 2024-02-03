@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset
 import torchio as tio
 import pandas as pd
+import numpy as np
 import nrrd
 
 from dataset.utils import show_item
@@ -114,8 +115,8 @@ class AllCTsDataset(Dataset):
             item = item.numpy()
 
         # Remove channel dimension if present
-        if len(item.shape) == 4:
-            item = item.squeeze(0)
+        if len(item.shape) > 3:
+            item = np.squeeze(item)
 
         #  min-max normalize to the range between 0 and 1
         item = (item - item.min()) / (item.max() - item.min())

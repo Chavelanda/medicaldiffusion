@@ -27,6 +27,8 @@ class AllCTsDataset(Dataset):
         elif split != 'all':
             self.df = self.df[self.df['split'] == split]
 
+        self.input_df = self.df.copy()
+
         # Read one 3d image and define sizes
         img, _ = nrrd.read(f'{self.root_dir}/{self.df["name"].iloc[0]}.nrrd')
         d, h, w = img.shape

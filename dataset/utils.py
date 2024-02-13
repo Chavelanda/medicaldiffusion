@@ -141,9 +141,12 @@ def rename_files(folder):
 
 
 # Build mesh from voxel grid
-def build_mesh(voxels, threshold=0.5, name='mesh', output_folder=None):
+def build_mesh(voxels, threshold=0.5, name='mesh', output_folder=None, spacing=[0.46262616, 0.3345859, 0.49944812]):
     # voxels = mcubes.smooth(voxels)
     vertices, triangles = mcubes.marching_cubes(voxels, threshold)
+
+    # Scale the vertices according to the actual voxel spacing
+    vertices = vertices * np.array(spacing)
 
     mesh = o3d.geometry.TriangleMesh(vertices=o3d.utility.Vector3dVector(vertices), triangles=o3d.utility.Vector3iVector(triangles))
     

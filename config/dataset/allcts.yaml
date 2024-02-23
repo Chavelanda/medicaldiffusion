@@ -1,9 +1,18 @@
 name: AllCTs
-root_dir: data/AllCTs_nrrd_global
-resize_d: 4
-resize_h: 4
-resize_w: 4
+root_dir: data/dist-lrt-05
+resize_d: 1
+resize_h: 1
+resize_w: 1
 image_channels: 1
 
-split: train-val
+metadata_name: metadata.csv
+split: all
+
+val_resize_d: 1
+val_resize_h: 1
+val_resize_w: 1
+val_image_channels: 1
+
+val_root_dir: data/allcts-global-128
+val_metadata_name: metadata.csv
 val_split: test

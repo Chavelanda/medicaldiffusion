@@ -19,7 +19,7 @@ def get_dataset(cfg):
     train_params = dataset_params['train'].copy()
     val_params = dataset_params['val'].copy()
     train_params['root_dir'] = cfg.dataset.root_dir
-    val_params['root_dir'] = cfg.dataset.root_dir
+    val_params['root_dir'] = cfg.dataset.val_root_dir
     for key in train_params:
         if key in cfg.dataset:
             train_params[key] = cfg.dataset[key]

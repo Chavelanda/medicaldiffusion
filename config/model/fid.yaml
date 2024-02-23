@@ -1,9 +1,9 @@
-stats_dir: # The directory where the FID statistics will be saved.
-name: # The name used to save the stats.
+stats_dir: evaluation/fid/stats # The directory where the FID statistics will be saved.
+name: dist-lrt-05 # The name used to save the stats.
 
-batch_size: # The number of samples per batch during activations calculation.
-num_workers: # The number of worker processes for data loading.
+batch_size: 10 # The number of samples per batch during activations calculation.
+num_workers: 32 # The number of worker processes for data loading.
 
-resnet: # The specific type of ResNet model to use.
+resnet: resnet50 # The specific type of ResNet model to use.
 
-cuda: # A boolean indicating whether to use CUDA for computation.
+cuda: True # A boolean indicating whether to use CUDA for computation.

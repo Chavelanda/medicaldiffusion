@@ -11,7 +11,7 @@ from dataset.utils import show_item
 
 
 class AllCTsDataset(Dataset):
-    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', augmentation=False,
+    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False,
                  resize_d=1, resize_h=1, resize_w=1, conditioned=True, metadata_name='metadata.csv'):
         
         assert split in ['all', 'train', 'val', 'test', 'train-val'], 'Invalid split: {}'.format(split)
@@ -44,6 +44,9 @@ class AllCTsDataset(Dataset):
         # Resize transform
         self.resize = tio.Resample((self.resize_d, self.resize_h, self.resize_w))
 
+        # Binarize
+        self.binarize = binarize
+
         # Condition
         self.conditioned = conditioned
         self.cond_dim = self.df['quality'].nunique()
@@ -60,6 +63,9 @@ class AllCTsDataset(Dataset):
         
         img, _ = nrrd.read(path)
         img = torch.from_numpy(img)
+
+        if self.binarize:
+            img = (img > 0.5).float()
 
         #  min-max normalized to the range between -1 and 1
         img = (img - img.min()) / (img.max() - img.min()) * 2 - 1

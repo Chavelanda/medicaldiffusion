@@ -124,8 +124,9 @@ class AllCTsDataset(Dataset):
         if len(item.shape) > 3:
             item = np.squeeze(item)
 
-        #  min-max normalize to the range between 0 and 1
+        #  min-max normalize to the range between 0 and 1 and binarize
         item = (item - item.min()) / (item.max() - item.min())
+        item = (item > 0.5).float()
         
         save_path = os.path.join(save_path, item_name + '.nrrd')
         

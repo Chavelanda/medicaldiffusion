@@ -10,7 +10,7 @@ DATASET_CLASSES = {
     'SKULL-BREAK': (SKULLBREAKDataset, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'SKULL-BREAK-TRIPLET': (SKULLBREAKDatasetTriplet, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
-    'allcts-msssim': (AllCts_MSSSIM, {'train': {'split': 'train-val', 'samples': 1000, 'resize_d': 1, 'resize_h': 1, 'resize_w': 1, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
+    'allcts-msssim': (AllCts_MSSSIM, {'train': {'split': 'train-val', 'samples': 1000, 'resize_d': 1, 'resize_h': 1, 'resize_w': 1, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resize_d': 1, 'resize_h': 1, 'resize_w': 1, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
     'DEFAULT': (DEFAULTDataset, {'train': {}, 'val': {}})
 }
 
@@ -27,7 +27,8 @@ def get_dataset(cfg):
         config_key = 'val_' + key
         if config_key in cfg.dataset:
             val_params[key] = cfg.dataset[config_key]
-    print(train_params, val_params)
+    print(f'Training parameters\n{train_params}')
+    print(f'Validation parameters\n{val_params}')
     train_dataset = DatasetClass(**train_params)
     val_dataset = DatasetClass(**val_params)
     if cfg.dataset.name == 'MRNet':

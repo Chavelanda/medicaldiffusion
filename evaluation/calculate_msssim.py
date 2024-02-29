@@ -11,7 +11,9 @@ from train.get_dataset import get_dataset
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
-    print('Running MSSSIM evaluation with following config: {}'.format(cfg)) 
+    #print('Running MSSSIM evaluation with following config: {}'.format(cfg))
+    with open_dict(cfg):
+        cfg.model.run_name = f'{cfg.model.run_name}_{cfg.dataset.metadata_name[-5]}' 
     wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
 
     wandb.config.update(OmegaConf.to_container(cfg.dataset))
@@ -43,10 +45,5 @@ def run(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    with hydra.initialize(version_base=None, config_path="../config/"):
-        cfg = hydra.compose(config_name='base_cfg', overrides=['model=msssim', 'dataset=allcts-msssim'])
-    print('Running MSSSIM evaluation with following config:')
-    print(cfg)
-
-    run(cfg)
+    run()
 

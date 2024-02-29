@@ -52,12 +52,13 @@ class Codebook(nn.Module):
         if self._need_init and self.training:
             self._init_embeddings(z)
         flat_inputs = shift_dim(z, 1, -1).flatten(end_dim=-2)  # [bthw, c]
-        distances = (flat_inputs ** 2).sum(dim=1, keepdim=True) \
-            - 2 * flat_inputs @ self.embeddings.t() \
-            + (self.embeddings.t() ** 2).sum(dim=0, keepdim=True)  # [bthw, c]
+        distances = torch.cdist(flat_inputs, self.embeddings, p=2)  # [bthw, c]
 
         encoding_indices = torch.argmin(distances, dim=1)
-        encode_onehot = F.one_hot(encoding_indices, self.n_codes).type_as(flat_inputs)  # [bthw, ncode]
+        
+        if self.training:
+            encode_onehot = F.one_hot(encoding_indices, self.n_codes).type_as(flat_inputs)  # [bthw, ncode]
+        
         encoding_indices = encoding_indices.view(z.shape[0], *z.shape[2:])  # [b, t, h, w, ncode]
 
         embeddings = F.embedding(
@@ -94,9 +95,13 @@ class Codebook(nn.Module):
 
         embeddings_st = (embeddings - z).detach() + z
 
-        avg_probs = torch.mean(encode_onehot, dim=0)
-        perplexity = torch.exp(-torch.sum(avg_probs *
+        if self.training:
+            avg_probs = torch.mean(encode_onehot, dim=0)
+            perplexity = torch.exp(-torch.sum(avg_probs *
                                torch.log(avg_probs + 1e-10)))
+        else:
+            avg_probs = None
+            perplexity = None
 
         return dict(embeddings=embeddings_st, encodings=encoding_indices,
                     commitment_loss=commitment_loss, perplexity=perplexity)

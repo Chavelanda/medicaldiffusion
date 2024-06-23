@@ -126,7 +126,7 @@ class AllCTsDataset(Dataset):
 
         #  min-max normalize to the range between 0 and 1 and binarize
         item = (item - item.min()) / (item.max() - item.min())
-        item = (item > 0.5).float()
+        item = (item > 0.5).astype(float)
         
         save_path = os.path.join(save_path, item_name + '.nrrd')
         

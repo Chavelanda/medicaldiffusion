@@ -161,3 +161,6 @@ pretrain/
 
 # Stats
 stats/
+
+# Latents
+latents/

@@ -138,7 +138,7 @@ class VQGAN(pl.LightningModule):
 
         if log_image:
             # print('Logging images')
-            self.logger.experiment.log({'samples': [wandb.Image(frames[0].cpu(), caption='original'), wandb.Image(frames_recon[0].cpu(), caption='recon')], 'trainer/global_step': self.global_step})
+            self.logger.experiment.log({'samples': [wandb.Image(frames[0].cpu(), caption='original'), wandb.Image(frames_recon[0].cpu().to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
 
         # print('adopt weight')
         disc_factor = adopt_weight(self.global_step, threshold=self.cfg.model.discriminator_iter_start)

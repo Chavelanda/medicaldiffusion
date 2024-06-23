@@ -56,11 +56,11 @@ class Codebook(nn.Module):
 
         encoding_indices = torch.argmin(distances, dim=1)
         
-        if self.training:
-            encode_onehot = F.one_hot(encoding_indices, self.n_codes).type_as(flat_inputs)  # [bthw, ncode]
-        
-        encoding_indices = encoding_indices.view(z.shape[0], *z.shape[2:])  # [b, t, h, w, ncode]
+        # One hot is here because of the shape of encoding_indices
+        encode_onehot = F.one_hot(encoding_indices, self.n_codes).to(torch.int8)  # [bthw, ncode]
 
+        encoding_indices = encoding_indices.view(z.shape[0], *z.shape[2:])  # [b, t, h, w, ncode]
+        
         embeddings = F.embedding(
             encoding_indices, self.embeddings)  # [b, t, h, w, c]
         embeddings = shift_dim(embeddings, -1, 1)  # [b, c, t, h, w]
@@ -68,9 +68,9 @@ class Codebook(nn.Module):
         commitment_loss = 0.25 * F.mse_loss(z, embeddings.detach())
 
         # EMA codebook update
+        n_total = encode_onehot.sum(dim=0)
         if self.training:
-            n_total = encode_onehot.sum(dim=0)
-            encode_sum = flat_inputs.t() @ encode_onehot
+            encode_sum = flat_inputs.t() @ encode_onehot.type_as(flat_inputs)
             if dist.is_initialized():
                 dist.all_reduce(n_total)
                 dist.all_reduce(encode_sum)
@@ -95,13 +95,8 @@ class Codebook(nn.Module):
 
         embeddings_st = (embeddings - z).detach() + z
 
-        if self.training:
-            avg_probs = torch.mean(encode_onehot, dim=0)
-            perplexity = torch.exp(-torch.sum(avg_probs *
-                               torch.log(avg_probs + 1e-10)))
-        else:
-            avg_probs = None
-            perplexity = None
+        avg_probs = n_total / flat_inputs.shape[0]
+        perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
         return dict(embeddings=embeddings_st, encodings=encoding_indices,
                     commitment_loss=commitment_loss, perplexity=perplexity)

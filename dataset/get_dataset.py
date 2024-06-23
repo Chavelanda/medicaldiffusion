@@ -15,17 +15,20 @@ DATASET_CLASSES = {
 }
 
 def get_dataset(cfg):
-    print('WRONG GET_DATASET FUNCTION. KEPT FOR COMPATIBILITY REASONS. CHANGE TO dataset.get_dataset')
     DatasetClass, dataset_params = DATASET_CLASSES[cfg.dataset.name]
     train_params = dataset_params['train'].copy()
     val_params = dataset_params['val'].copy()
     train_params['root_dir'] = cfg.dataset.root_dir
     val_params['root_dir'] = cfg.dataset.val_root_dir
+    # Setting train params
     for key in train_params:
         if key in cfg.dataset:
             train_params[key] = cfg.dataset[key]
-    # Aggiungere config base anche per il val. 
-    # Quelli con aggiunta del val specifico vanno semplicemente sovrascritti
+    # Using train params also for validation
+    for key in val_params:
+        if key in cfg.dataset:
+            val_params[key] = cfg.dataset[key]
+    # Overwriting val params when specified
     for key in val_params:
         config_key = 'val_' + key
         if config_key in cfg.dataset:

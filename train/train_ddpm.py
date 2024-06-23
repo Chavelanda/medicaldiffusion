@@ -4,7 +4,7 @@ from ddpm import Unet3D, GaussianDiffusion, Trainer
 import torch
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
-from train.get_dataset import get_dataset
+from dataset.get_dataset import get_dataset
 
 import wandb
 

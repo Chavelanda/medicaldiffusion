@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Subset
 from ddpm.diffusion import default
 from vq_gan_3d.model import VQGAN
 #from train.callbacks import ImageLogger, VideoLogger
-from train.get_dataset import get_dataset
+from dataset.get_dataset import get_dataset
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 

@@ -9,7 +9,8 @@ from evaluation.fid import compute_stats_from_model
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
-
+    with open_dict(cfg):
+        cfg.model.name = f'{cfg.model.name}-{cfg.dataset.metadata_name[-5]}'
     print('Calculating FID stats with the following config:\n{}'.format(OmegaConf.to_yaml(cfg)))
 
     dataset, *_ = get_dataset(cfg)

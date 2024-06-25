@@ -1,4 +1,5 @@
 import os
+import csv
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import torch
@@ -18,6 +19,8 @@ def run(cfg: DictConfig):
     dataset, *_ = get_dataset(cfg)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=cfg.model.num_workers)
 
+    split = cfg.dataset.split
+
     # load the checkpoint file
     assert os.path.isfile(cfg.model.checkpoint_path), "Checkpoint file for VQGAN must be specified"
     
@@ -29,14 +32,30 @@ def run(cfg: DictConfig):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
+    # Create metadata csv if not existing
+    metadata_path = os.path.join(save_path, 'metadata.csv')
+    with open(metadata_path, 'a', newline='') as f:
+        writer = csv.writer(f)
+        # If the file is empty, write the header
+        if os.stat(metadata_path).st_size == 0:
+            writer.writerow(['name', 'split', 'quality'])
+
     with torch.no_grad():
         for i, batch in enumerate(tqdm(dataloader)):
             name = dataset.df.iloc[i, :]['name'] + '-recon'
-
+            
             batch['data'] = batch['data'].to(accelerator)
+            class_name = dataset.get_class_name_from_cond(batch['cond'])[0]
+
             reconstructed_batch = vqgan.test_step(batch, 0).cpu()
-            print(reconstructed_batch.shape, name)
+            print(reconstructed_batch.shape, name, class_name, split)
             dataset.save(name, reconstructed_batch, save_path)
+
+            # Append metadata to csv
+            with open(metadata_path, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([name, split, class_name])
+            
             break
 
     

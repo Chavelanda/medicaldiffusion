@@ -7,7 +7,7 @@ import wandb
 import torch
 
 from evaluation.pytorch_ssim.ssim import MSSSIM_3d
-from train.get_dataset import get_dataset
+from dataset.get_dataset import get_dataset
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
@@ -26,7 +26,7 @@ def run(cfg: DictConfig):
     model = MSSSIM_3d(window_size=cfg.model.window_size, size_average=cfg.model.size_average, channel=cfg.dataset.image_channels, device=device).to(device)
 
     sum = 0.0
-    i = 1
+    i = 0
 
     print('Starting MSSSIM evaluation...')
     with torch.no_grad():

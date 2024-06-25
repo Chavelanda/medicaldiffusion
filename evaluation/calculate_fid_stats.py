@@ -2,7 +2,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 from torch.utils.data import DataLoader
 
-from train.get_dataset import get_dataset
+from dataset.get_dataset import get_dataset
 from medicalnet import resnet_gap
 from evaluation.fid import compute_stats_from_model
 

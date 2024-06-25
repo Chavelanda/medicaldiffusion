@@ -48,16 +48,12 @@ def run(cfg: DictConfig):
             class_name = dataset.get_class_name_from_cond(batch['cond'])[0]
 
             reconstructed_batch = vqgan.test_step(batch, 0).cpu()
-            print(reconstructed_batch.shape, name, class_name, split)
             dataset.save(name, reconstructed_batch, save_path)
 
             # Append metadata to csv
             with open(metadata_path, 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([name, split, class_name])
-            
-            break
-
     
 
 

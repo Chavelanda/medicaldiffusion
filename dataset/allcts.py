@@ -9,6 +9,7 @@ import nrrd
 
 from dataset.utils import show_item
 
+import matplotlib.image
 
 class AllCTsDataset(Dataset):
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False,
@@ -132,8 +133,47 @@ class AllCTsDataset(Dataset):
         
         nrrd.write(save_path, item)
 
+class AllCTsDatasetSS(AllCTsDataset):
+    
+    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False,
+                 resize_d=1, resize_h=1, resize_w=1, metadata_name='metadata.csv'):
+        
+        super().__init__(root_dir=root_dir, split=split, binarize=binarize, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w, metadata_name=metadata_name)
+
+        # Define transforms
+        self.transforms = tio.Compose([
+        # tio.RandomAffine(scales=(0.03, 0.03, 0), degrees=(
+        # 0, 0, 3), translation=(4, 4, 0)),
+        tio.RandomFlip(axes=(0), flip_probability=1),
+        ])
+
+    def __getitem__(self, index):
+        entry = self.df.iloc[index]
+        path = os.path.join(self.root_dir, entry['name'] + '.nrrd')
+        
+        img, _ = nrrd.read(path)
+        img = torch.from_numpy(img)
+
+        if self.binarize:
+            img = (img > 0.5).float()
+
+        #  min-max normalized to the range between -1 and 1
+        img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
+
+        img = img.unsqueeze(0).float()
+        img = self.resize(img)
+        
+        flipped_img = self.transforms(img)
+
+        data = torch.stack((img, flipped_img), dim=0)
+        
+        return {'data': data}
+
 if __name__ == '__main__':
-    dataset = AllCTsDataset(root_dir='data/AllCTs_nrrd_global', split='all')
+    dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all')
     print(len(dataset))
-    print(dataset.get_cond(1))
+    img = dataset.__getitem__(100)['data'].numpy()
+    
+    print(img.shape)
+    # matplotlib.image.imsave('foo.png', img[0, 64])
     

@@ -29,7 +29,11 @@ def run(cfg: DictConfig):
             
             image = batch['data']
 
-            utils.build_mesh(torch.transpose(torch.squeeze(image), 0, 1).detach().cpu().numpy(), threshold=0, name=name, output_folder=save_path, spacing=spacing)
+            # Squeeze image
+            image = torch.squeeze(image)
+
+            utils.build_mesh(image.detach().cpu().numpy(), 
+            threshold=0, name=name, output_folder=save_path, spacing=spacing)
 
     
 

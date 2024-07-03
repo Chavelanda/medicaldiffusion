@@ -1,8 +1,9 @@
-from dataset import MRNetDataset, BRATSDataset, ADNIDataset, DUKEDataset, LIDCDataset, DEFAULTDataset, SKULLBREAKDataset, SKULLBREAKDatasetTriplet, AllCTsDataset, AllCTsDatasetSS, AllCts_MSSSIM
+from dataset import MRNetDataset, MRNetDatasetMSSSIM, BRATSDataset, ADNIDataset, DUKEDataset, LIDCDataset, DEFAULTDataset, SKULLBREAKDataset, SKULLBREAKDatasetTriplet, AllCTsDataset, AllCTsDatasetSS, AllCts_MSSSIM
 from torch.utils.data import WeightedRandomSampler
 
 DATASET_CLASSES = {
     'MRNet': (MRNetDataset, {'train': {'split': 'train', 'conditioned': True, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'val', 'conditioned': True, 'metadata_name': 'metadata.csv'}}),
+    'MRNetMSSSIM': (MRNetDatasetMSSSIM, {'train': {'split': 'train', 'metadata_name': 'metadata.csv', 'samples': 1000}, 'val': {'split': 'val', 'metadata_name': 'metadata.csv', 'samples': 1000}}),
     'BRATS': (BRATSDataset, {'train': {'imgtype': None, 'train': True, 'severity': None, 'resize': None}, 'val': {'imgtype': None, 'train': False, 'severity': None, 'resize': None}}),
     'ADNI': (ADNIDataset, {'train': {'augmentation': True}, 'val': {'augmentation': False}}),
     'DUKE': (DUKEDataset, {'train': {}, 'val': {}}),

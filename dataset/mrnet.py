@@ -105,6 +105,37 @@ class MRNetDataset(Dataset):
         return {'data': img, 'cond': cond}
 
 
+class MRNetDatasetMSSSIM(MRNetDataset):
+    def __init__(self, 
+    root_dir, 
+    # task, 
+    # plane, 
+    split='train',
+    metadata_name='metadata.csv',
+    # fold=0,
+    samples=1000,
+    ):
+        assert split in ['all', 'train', 'val'], 'Invalid split: {}'.format(split)
+        
+        super().__init__(root_dir, split=split, conditioned=False, metadata_name=metadata_name)
+
+        self.samples = samples
+    
+    def __len__(self):
+        return self.samples
+
+    def __getitem__(self, index):
+        index1 = np.random.randint(len(self.df))
+        index2 = np.random.randint(len(self.df))
+
+        img1 = super().__getitem__(index1)['data']
+        img2 = super().__getitem__(index2)['data']
+
+        return img1, img2
+
+
 if __name__ == '__main__':
-    dataset = MRNetDataset(root_dir='data/mrnet', split='all')
+    dataset = MRNetDatasetMSSSIM(root_dir='data/mrnet', split='train')
     print(len(dataset))
+    img1, img2 = dataset.__getitem__(0)
+    print(img1.shape, img2.shape)

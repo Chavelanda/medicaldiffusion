@@ -104,6 +104,27 @@ class MRNetDataset(Dataset):
 
         return {'data': img, 'cond': cond}
 
+    def get_header(self):
+        return self.df.columns
+
+    def get_row(self, name, split, cond):
+        cond = torch.squeeze(cond).type(torch.int8)
+        return [name] + cond.numpy().tolist() + [split]
+
+    @staticmethod
+    def save(name, item, path):
+        # Transform the item to numpy array
+        if isinstance(item, torch.Tensor):
+            item = item.numpy()
+
+        # Remove channel dimension if present
+        if len(item.shape) > 3:
+            item = np.squeeze(item)
+
+        save_path = os.path.join(path, name)
+
+        np.save(save_path, item)
+
 
 class MRNetDatasetMSSSIM(MRNetDataset):
     def __init__(self, 
@@ -135,7 +156,7 @@ class MRNetDatasetMSSSIM(MRNetDataset):
 
 
 if __name__ == '__main__':
-    dataset = MRNetDatasetMSSSIM(root_dir='data/mrnet', split='train')
+    dataset = MRNetDataset(root_dir='data/mrnet', split='train')
     print(len(dataset))
-    img1, img2 = dataset.__getitem__(0)
-    print(img1.shape, img2.shape)
+    img = dataset.__getitem__(0)['data']
+    print(img.shape)

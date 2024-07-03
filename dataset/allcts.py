@@ -114,6 +114,13 @@ class AllCTsDataset(Dataset):
         index = self.df[self.df['name'] == item_name].index[0]
         
         return self.__getitem__(index)
+
+    def get_header(self):
+        return ['name', 'split', 'quality']
+
+    def get_row(self, name, split, cond):
+        cond_name = self.get_class_name_from_cond(cond)[0]
+        return [name, split, cond_name]
     
     @staticmethod
     def save(item_name, item, save_path):
@@ -170,9 +177,10 @@ class AllCTsDatasetSS(AllCTsDataset):
         return {'data': data}
 
 if __name__ == '__main__':
-    dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all')
+    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='all')
     print(len(dataset))
     img = dataset.__getitem__(100)['data'].numpy()
+    print(dataset.df.head())
     
     print(img.shape)
     # matplotlib.image.imsave('foo.png', img[0, 64])

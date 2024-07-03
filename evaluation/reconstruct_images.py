@@ -19,8 +19,6 @@ def run(cfg: DictConfig):
     dataset, *_ = get_dataset(cfg)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=cfg.model.num_workers)
 
-    split = cfg.dataset.split
-
     # load the checkpoint file
     assert os.path.isfile(cfg.model.checkpoint_path), "Checkpoint file for VQGAN must be specified"
     
@@ -38,14 +36,16 @@ def run(cfg: DictConfig):
         writer = csv.writer(f)
         # If the file is empty, write the header
         if os.stat(metadata_path).st_size == 0:
-            writer.writerow(['name', 'split', 'quality'])
+            # get metadata header from dataset
+            writer.writerow(dataset.get_header())
 
     with torch.no_grad():
         for i, batch in enumerate(tqdm(dataloader)):
             name = dataset.df.iloc[i, :]['name'] + '-recon'
             
             batch['data'] = batch['data'].to(accelerator)
-            class_name = dataset.get_class_name_from_cond(batch['cond'])[0]
+            # class_name = dataset.get_class_name_from_cond(batch['cond'])[0]
+            split = dataset.df.iloc[i, :]['split']
 
             reconstructed_batch = vqgan.test_step(batch, 0).cpu()
             dataset.save(name, reconstructed_batch, save_path)
@@ -53,7 +53,8 @@ def run(cfg: DictConfig):
             # Append metadata to csv
             with open(metadata_path, 'a', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow([name, split, class_name])
+                writer.writerow(dataset.get_row(name, split, batch['cond']))
+                # writer.writerow([name, split, class_name])
     
 
 

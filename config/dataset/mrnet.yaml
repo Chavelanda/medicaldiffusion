@@ -1,7 +1,14 @@
 name: MRNet
-root_dir: /data/home/firas/Desktop/work/MR_Knie/Data/MRNet/MRNet-v1.0/
+root_dir: data/mrnet
 image_channels: 1
-task: acl
-plane: sagittal
+
+metadata_name: metadata.csv
+split: train
+
+val_root_dir: data/mrnet
+val_metadata_name: metadata.csv
+val_split: val
+
+save_path: data/test # To be specified only when reconstructing images for vq_gan
 
 

@@ -59,6 +59,9 @@ class MRNetDataset(Dataset):
         self.preprocessing_transforms = PREPROCESSING_TRANSORMS
         self.transforms = TRAIN_TRANSFORMS if split == 'train' else VAL_TRANSFORMS
         # self.fold = fold
+        self.d = 32
+        self.h = 256
+        self.w = 256
 
         # Load metadata
         self.df = pd.read_csv(os.path.join(root_dir, metadata_name), 
@@ -67,6 +70,9 @@ class MRNetDataset(Dataset):
          # Take only the required split
         if split != 'all':
             self.df = self.df[self.df['split'] == split]
+
+        # Set dimension of cond
+        self.cond_dim = 3
 
     def __len__(self):
         return len(self.df)
@@ -110,6 +116,16 @@ class MRNetDataset(Dataset):
     def get_row(self, name, split, cond):
         cond = torch.squeeze(cond).type(torch.int8)
         return [name] + cond.numpy().tolist() + [split]
+
+    def get_cond(self, batch_size=1, random=True, class_idx=None):
+        # Tensor of zeros with one in a random position for each element of the batch
+        cond = torch.zeros((batch_size, self.cond_dim))
+        if random:
+            cond[torch.arange(batch_size), torch.randint(0, self.cond_dim, (batch_size,))] = 1
+        else:
+            assert class_idx is not None, 'If random is False, class_idx must be specified'
+            cond[:, class_idx] = 1
+        return cond
 
     @staticmethod
     def save(name, item, path):
@@ -156,7 +172,7 @@ class MRNetDatasetMSSSIM(MRNetDataset):
 
 
 if __name__ == '__main__':
-    dataset = MRNetDataset(root_dir='data/mrnet', split='train')
+    dataset = MRNetDatasetMSSSIM(root_dir='data/mrnet', split='train')
     print(len(dataset))
-    img = dataset.__getitem__(0)['data']
-    print(img.shape)
+    img = dataset.__getitem__(0)[0]
+    print(img.shape, dataset.df.head(1))

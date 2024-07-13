@@ -9,8 +9,7 @@ import wandb
 import torch
 
 from ddpm import GaussianDiffusion, Unet3D
-from train.get_dataset import get_dataset
-import subprocess
+from dataset.get_dataset import get_dataset
 
  
 
@@ -75,7 +74,8 @@ def run(cfg: DictConfig):
         writer = csv.writer(f)
         # If the file is empty, write the header
         if os.stat(metadata_path).st_size == 0:
-            writer.writerow(['name', 'split', 'quality'])
+            # get metadata header from dataset
+            writer.writerow(ds.get_header())
 
     # Set up generation 
     n_samples = cfg.model.n_samples
@@ -92,7 +92,9 @@ def run(cfg: DictConfig):
     else:
         last_cond = int(n_samples % ex_step * m)
 
-    train_latents = torch.from_numpy(np.load(f'generate/latents/q{class_idx+2}_latents.npy')).float().cuda()
+    assert (m == 1 and cfg.model.train_latents is None) or (m > 1 and cfg.model.train_latents), "If m > 1, path to train latents must be specified. Otherwise train_latents must be left empty!"
+    if m > 1:
+        train_latents = torch.from_numpy(np.load(cfg.model.train_latents)).float().cuda()
 
     print(f'Number of samples to generate: {n_samples}')
     print(f'Batch size, m, generated per batch: {batch_size}, {m}, {ex_step}')
@@ -107,7 +109,7 @@ def run(cfg: DictConfig):
 
             cond = ds.get_cond(batch_size=batch_size, random=random, class_idx=class_idx).cuda() if conditioned else None
             # print('COND',cond)
-            class_names = ds.get_class_name_from_cond(cond) if conditioned else ['null' for _ in range(cfg.model.batch_size)]
+            # class_names = ds.get_class_name_from_cond(cond) if conditioned else ['null' for _ in range(cfg.model.batch_size)]
             
             # Generate bs latents
             latents = diffusion.p_sample_loop((batch_size, channels, num_frames, image_size, image_size), cond=cond, cond_scale=1)
@@ -119,13 +121,16 @@ def run(cfg: DictConfig):
             vq_output = diffusion.vqgan.codebook(latents)
             latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, num_frames, image_size, image_size))
 
-            # Compute distance with train latents
-            distance_matrix = torch.cdist(latents, train_latents, p=2.0, compute_mode='use_mm_for_euclid_dist_if_necessary')
+            if m > 1:
+                # Compute distance with train latents
+                distance_matrix = torch.cdist(latents, train_latents, p=2.0, compute_mode='use_mm_for_euclid_dist_if_necessary')
 
-            # Select farthest latent every m samples
-            nn, _ = torch.min(distance_matrix.view((-1, m, train_latents.shape[0])), 2)
-            selected_idx = torch.argmax(nn, dim=1)
-
+                # Select farthest latent every m samples
+                nn, _ = torch.min(distance_matrix.view((-1, m, train_latents.shape[0])), 2)
+                selected_idx = torch.argmax(nn, dim=1)
+            else:
+                selected_idx = 0
+            
             encoding = encodings[torch.arange(encodings.shape[0]), selected_idx]
             
             # Decode the latent
@@ -133,14 +138,14 @@ def run(cfg: DictConfig):
 
             # Save the images
             for j, sample in enumerate(samples):
-                filename = f'{name_prefix}_{i*ex_step + j}_q{class_names[j]}'
+                filename = f'{name_prefix}_{class_idx}_{i*ex_step + j}'
                 
-                ds.save(filename, sample, save_path=cfg.model.data_folder)
+                ds.save(filename, sample, cfg.model.data_folder)
 
                 # Append metadata to csv
                 with open(metadata_path, 'a', newline='') as f:
                     writer = csv.writer(f)
-                    writer.writerow([filename, 'train', class_names[j]])
+                    writer.writerow(ds.get_row(filename, 'train', cond[j].cpu()))
             
             wandb.log({'step': i})
     

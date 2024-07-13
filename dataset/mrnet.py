@@ -121,7 +121,7 @@ class MRNetDataset(Dataset):
         # Tensor of zeros with one in a random position for each element of the batch
         cond = torch.zeros((batch_size, self.cond_dim))
         if random:
-            cond[torch.arange(batch_size), torch.randint(0, self.cond_dim, (batch_size,))] = 1
+            cond = torch.ranint(0, 2, (batch_size, self.cond_dim))
         else:
             assert class_idx is not None, 'If random is False, class_idx must be specified'
             cond[:, class_idx] = 1

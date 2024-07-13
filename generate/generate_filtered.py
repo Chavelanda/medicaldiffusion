@@ -138,7 +138,7 @@ def run(cfg: DictConfig):
 
             # Save the images
             for j, sample in enumerate(samples):
-                filename = f'{name_prefix}_{class_idx}_{i*ex_step + j}'
+                filename = f'{name_prefix}_{i*ex_step + j}'
                 
                 ds.save(filename, sample, cfg.model.data_folder)
 

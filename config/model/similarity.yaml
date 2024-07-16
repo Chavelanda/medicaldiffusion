@@ -1,0 +1,8 @@
+num_workers: 32
+
+checkpoint_path: checkpoints/ss/AllCTsSS/allcts-ss-01/best_val-epoch=15-step=1456.ckpt # Path to embedding model. If empty, calculates similarity on row data
+
+save_path: memorization/stats/allcts # Path to folder where to save coefficients
+name: ss-train-gen-07
+
+accelerator: cuda

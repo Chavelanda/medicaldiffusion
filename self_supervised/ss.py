@@ -89,6 +89,10 @@ class SS(pl.LightningModule):
         wandb.log({'val/loss': loss, 'trainer/global_step': self.global_step})
         self.log('val/loss', loss, prog_bar=True)
 
+    def test_step(self, batch):
+        x = batch['data']
+        return self.encoder(x)
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer

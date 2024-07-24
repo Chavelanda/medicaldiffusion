@@ -1,5 +1,5 @@
 from dataset.breast_uka import BreastUKA
-from dataset.mrnet import MRNetDataset, MRNetDatasetMSSSIM
+from dataset.mrnet import MRNetDataset, MRNetDatasetMSSSIM, MRNetDatasetSS
 from dataset.brats import BRATSDataset
 from dataset.adni import ADNIDataset
 from dataset.duke import DUKEDataset

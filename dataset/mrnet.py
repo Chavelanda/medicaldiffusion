@@ -9,7 +9,7 @@ import random
 import math
 import argparse
 
-from matplotlib import pyplot as plt
+import matplotlib
 
 # TODO: Normalize to -1 and 1
 
@@ -43,9 +43,7 @@ class MRNetDataset(Dataset):
     # plane, 
     split='train',
     conditioned=True,
-    metadata_name='metadata.csv', 
-    preprocessing_transforms=None, 
-    transforms=None,
+    metadata_name='metadata.csv',
     # fold=0
     ):
         assert split in ['all', 'train', 'val'], 'Invalid split: {}'.format(split)
@@ -171,8 +169,56 @@ class MRNetDatasetMSSSIM(MRNetDataset):
         return img1, img2
 
 
+class MRNetDatasetSS(MRNetDataset):
+    
+    def __init__(self, 
+    root_dir, 
+    # task, 
+    # plane, 
+    split='train',
+    metadata_name='metadata.csv',
+    # fold=0
+    ):
+        super().__init__(root_dir, split=split, metadata_name=metadata_name)
+
+        # Define transforms
+        self.ss_transforms = tio.Compose([
+        # tio.RandomAffine(scales=(0.03, 0.03, 0), degrees=(
+        # 0, 0, 3), translation=(4, 4, 0)),
+        tio.RandomFlip(axes=(1), flip_probability=1),
+        ])
+
+    def __getitem__(self, index):
+        entry = self.df.iloc[index]
+        data_path = os.path.join(self.root_dir, entry['name'] + '.npy')
+
+        img = np.load(data_path)
+        img = torch.from_numpy(img)
+
+        # Add channel dimension
+        img = img.unsqueeze(0)
+
+        img = torch.permute(img, (0, 2, 3, 1))  # Use C, H, W, D for TorchIO
+        if self.preprocessing_transforms:
+            img = self.preprocessing_transforms(img)
+
+        flipped_img = self.ss_transforms(img)
+
+        # Revert to C, D, H, W for PyTorch
+        img = torch.permute(img, (0, 3, 1, 2))
+        flipped_img = torch.permute(flipped_img, (0, 3, 1, 2))
+
+        data = torch.stack((img, flipped_img), dim=0)
+
+        return {'data': data}
+
+
+
 if __name__ == '__main__':
-    dataset = MRNetDatasetMSSSIM(root_dir='data/mrnet', split='train')
+    dataset = MRNetDatasetSS(root_dir='data/mrnet', split='val')
     print(len(dataset))
-    img = dataset.__getitem__(0)[0]
-    print(img.shape, dataset.df.head(1))
+    img = dataset.__getitem__(0)['data']
+    print(img.shape)
+    matplotlib.image.imsave('foo1.png', img[0, 0, 6])
+    matplotlib.image.imsave('foo2.png', img[1, 0, 6])
+    print('fooed')

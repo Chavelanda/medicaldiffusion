@@ -1,0 +1,10 @@
+name: MRNetSS
+root_dir: data/mrnet
+image_channels: 1
+
+metadata_name: metadata.csv
+split: train
+
+val_root_dir: data/mrnet
+val_metadata_name: metadata.csv
+val_split: val

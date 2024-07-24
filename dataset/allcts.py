@@ -119,7 +119,9 @@ class AllCTsDataset(Dataset):
         return ['name', 'split', 'quality']
 
     def get_row(self, name, split, cond):
-        cond_name = self.get_class_name_from_cond(cond)[0]
+        cond = torch.squeeze(cond)
+        cond = torch.unsqueeze(cond, 0)
+        cond_name = self.get_class_name_from_cond(cond)
         return [name, split, cond_name]
     
     @staticmethod
@@ -151,7 +153,7 @@ class AllCTsDatasetSS(AllCTsDataset):
         self.transforms = tio.Compose([
         # tio.RandomAffine(scales=(0.03, 0.03, 0), degrees=(
         # 0, 0, 3), translation=(4, 4, 0)),
-        tio.RandomFlip(axes=(0), flip_probability=1),
+        tio.RandomFlip(axes=(1), flip_probability=1),
         ])
 
     def __getitem__(self, index):
@@ -177,11 +179,19 @@ class AllCTsDatasetSS(AllCTsDataset):
         return {'data': data}
 
 if __name__ == '__main__':
-    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='all')
+    dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all')
     print(len(dataset))
-    img = dataset.__getitem__(100)['data'].numpy()
-    print(dataset.df.head())
-    
+    img = dataset.__getitem__(0)['data']
     print(img.shape)
-    # matplotlib.image.imsave('foo.png', img[0, 64])
+    matplotlib.image.imsave('foo1.png', img[0, 0,  64])
+    matplotlib.image.imsave('foo2.png', img[1, 0,  64])
+    print('fooed')
+
+    # dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='all')
+    # print(len(dataset))
+    # img = dataset.__getitem__(10)['data']
+
+    # matplotlib.image.imsave('foo.png', img[0, 65])
+
+    # print('fooed again')
     

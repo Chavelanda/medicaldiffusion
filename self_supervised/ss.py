@@ -78,16 +78,13 @@ class SS(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         loss = self.forward(batch)
         
-        wandb.log({'train/loss': loss, 'trainer/global_step': self.global_step})
         self.log('train/loss', loss, prog_bar=True)
         
         return loss
 
     def validation_step(self, batch, batch_idx):
         loss = self.forward(batch)
-
-        wandb.log({'val/loss': loss, 'trainer/global_step': self.global_step})
-        self.log('val/loss', loss, prog_bar=True)
+        self.log('val/loss', loss, prog_bar=True, on_epoch=True)
 
     def test_step(self, batch):
         x = batch['data']

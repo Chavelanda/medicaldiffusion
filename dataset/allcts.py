@@ -22,6 +22,7 @@ class AllCTsDataset(Dataset):
         # Read the CSV file as a DataFrame
         self.df = pd.read_csv(os.path.join(root_dir, metadata_name))
         self.df['name'] = self.df['name'].astype(str)
+        self.df = self.df.sort_values('name')
 
         # Take only the required split
         if split == 'train-val':
@@ -121,7 +122,7 @@ class AllCTsDataset(Dataset):
     def get_row(self, name, split, cond):
         cond = torch.squeeze(cond)
         cond = torch.unsqueeze(cond, 0)
-        cond_name = self.get_class_name_from_cond(cond)
+        cond_name = self.get_class_name_from_cond(cond)[0]
         return [name, split, cond_name]
     
     @staticmethod
@@ -145,7 +146,8 @@ class AllCTsDataset(Dataset):
 class AllCTsDatasetSS(AllCTsDataset):
     
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False,
-                 resize_d=1, resize_h=1, resize_w=1, metadata_name='metadata.csv'):
+                 resize_d=1, resize_h=1, resize_w=1, metadata_name='metadata.csv',
+                 recon_root_dir=None, recon_metadata_name='metadata.csv'):
         
         super().__init__(root_dir=root_dir, split=split, binarize=binarize, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w, metadata_name=metadata_name)
 
@@ -153,8 +155,22 @@ class AllCTsDatasetSS(AllCTsDataset):
         self.transforms = tio.Compose([
         # tio.RandomAffine(scales=(0.03, 0.03, 0), degrees=(
         # 0, 0, 3), translation=(4, 4, 0)),
-        tio.RandomFlip(axes=(1), flip_probability=1),
+        tio.RandomFlip(axes=(0,), flip_probability=1),
         ])
+
+        # Prepare recon data
+        if recon_root_dir is not None:
+            self.recon_root_dir = recon_root_dir
+            recon_dataset = AllCTsDataset(recon_root_dir, metadata_name=recon_metadata_name, split=split, binarize=binarize, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w)
+            self.recon_df = recon_dataset.df
+            self.p_a = 0.66667
+            self.p_b = 0.5
+        else:
+            # If reconstructions are not available, use input df (no transformation happening)
+            self.recon_root_dir = root_dir
+            self.recon_df = self.df
+            self.p_a = 0.
+            self.p_b = 1.
 
     def __getitem__(self, index):
         entry = self.df.iloc[index]
@@ -163,18 +179,32 @@ class AllCTsDatasetSS(AllCTsDataset):
         img, _ = nrrd.read(path)
         img = torch.from_numpy(img)
 
-        if self.binarize:
-            img = (img > 0.5).float()
-
         #  min-max normalized to the range between -1 and 1
         img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
 
+        if self.binarize:
+            img = (img > 0.).float()
+
         img = img.unsqueeze(0).float()
         img = self.resize(img)
-        
-        flipped_img = self.transforms(img)
 
-        data = torch.stack((img, flipped_img), dim=0)
+        if np.random.rand() < self.p_a:       
+            # Load and process as for normal image the reconstructed one
+            recon_entry = self.recon_df.iloc[index]
+            recon_path = os.path.join(self.recon_root_dir, recon_entry['name'] + '.nrrd')
+            second_img = torch.from_numpy(nrrd.read(recon_path)[0])
+            second_img = (second_img - second_img.min()) / (second_img.max() - second_img.min()) * 2 - 1
+            if self.binarize:
+                second_img = (second_img > 0.).float()
+            second_img = self.resize(second_img.unsqueeze(0).float())
+            
+            # Possibly flip the image
+            if np.random.rand() > self.p_b:
+                second_img = self.transforms(second_img)
+        else:
+            second_img = self.transforms(img)
+
+        data = torch.stack((img, second_img), dim=0)
         
         return {'data': data}
 
@@ -183,8 +213,8 @@ if __name__ == '__main__':
     print(len(dataset))
     img = dataset.__getitem__(0)['data']
     print(img.shape)
-    matplotlib.image.imsave('foo1.png', img[0, 0,  64])
-    matplotlib.image.imsave('foo2.png', img[1, 0,  64])
+    matplotlib.image.imsave('foo1.png', img[0, 0, 64, :,:])
+    matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
     print('fooed')
 
     # dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='all')

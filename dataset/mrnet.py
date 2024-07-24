@@ -65,6 +65,8 @@ class MRNetDataset(Dataset):
         self.df = pd.read_csv(os.path.join(root_dir, metadata_name), 
             dtype={'name': str, 'abnormal': int, 'acl': int, 'meniscus': int, 'split': str})
 
+        self.df = self.df.sort_values('name')
+
          # Take only the required split
         if split != 'all':
             self.df = self.df[self.df['split'] == split]
@@ -177,6 +179,8 @@ class MRNetDatasetSS(MRNetDataset):
     # plane, 
     split='train',
     metadata_name='metadata.csv',
+    recon_root_dir=None,
+    recon_metadata_name='metadata.csv'
     # fold=0
     ):
         super().__init__(root_dir, split=split, metadata_name=metadata_name)
@@ -187,6 +191,20 @@ class MRNetDatasetSS(MRNetDataset):
         # 0, 0, 3), translation=(4, 4, 0)),
         tio.RandomFlip(axes=(1), flip_probability=1),
         ])
+
+        # Prepare recon data
+        if recon_root_dir is not None:
+            self.recon_root_dir = recon_root_dir
+            recon_dataset = MRNetDataset(recon_root_dir, split=split, metadata_name=recon_metadata_name, conditioned=False)
+            self.recon_df = recon_dataset.df
+            self.p_a = 0.66667
+            self.p_b = 0.5
+        else:
+            # If reconstructions are not available, use input df (no transformation happening)
+            self.recon_root_dir = root_dir
+            self.recon_df = self.df
+            self.p_a = 0.
+            self.p_b = 1.
 
     def __getitem__(self, index):
         entry = self.df.iloc[index]
@@ -202,20 +220,32 @@ class MRNetDatasetSS(MRNetDataset):
         if self.preprocessing_transforms:
             img = self.preprocessing_transforms(img)
 
-        flipped_img = self.ss_transforms(img)
+        if np.random.rand() < self.p_a:       
+            # Load and process as for normal image the reconstructed one
+            recon_entry = self.recon_df.iloc[index]
+            recon_path = os.path.join(self.recon_root_dir, recon_entry['name'] + '.npy')
+            second_img = torch.permute(torch.from_numpy(np.load(recon_path)).unsqueeze(0), (0, 2, 3, 1))
+            if self.preprocessing_transforms:
+                second_img = self.preprocessing_transforms(second_img)
+            
+            # Possibly flip the image
+            if np.random.rand() > self.p_b:
+                second_img = self.ss_transforms(second_img)
+        else:
+            second_img = self.ss_transforms(img)
 
         # Revert to C, D, H, W for PyTorch
         img = torch.permute(img, (0, 3, 1, 2))
-        flipped_img = torch.permute(flipped_img, (0, 3, 1, 2))
+        second_img = torch.permute(second_img, (0, 3, 1, 2))
 
-        data = torch.stack((img, flipped_img), dim=0)
+        data = torch.stack((img, second_img), dim=0)
 
         return {'data': data}
 
 
 
 if __name__ == '__main__':
-    dataset = MRNetDatasetSS(root_dir='data/mrnet', split='val')
+    dataset = MRNetDatasetSS(root_dir='data/mrnet', split='val', recon_root_dir='data/mrnet-vqgan-01')
     print(len(dataset))
     img = dataset.__getitem__(0)['data']
     print(img.shape)

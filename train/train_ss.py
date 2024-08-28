@@ -34,7 +34,7 @@ def run(cfg: DictConfig):
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor='val/loss',
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_steps=5000, save_top_k=-1,
+    callbacks.append(ModelCheckpoint(every_n_train_steps=5000, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
     
 

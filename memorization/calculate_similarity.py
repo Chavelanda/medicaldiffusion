@@ -62,7 +62,7 @@ class Extractor(torch.nn.Module):
         return b['data']
 
     def test_step(self, batch):
-        return forward(batch)
+        return self.forward(batch)
 
 
 if __name__ == '__main__':

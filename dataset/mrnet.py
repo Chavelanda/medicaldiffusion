@@ -197,8 +197,8 @@ class MRNetDatasetSS(MRNetDataset):
             self.recon_root_dir = recon_root_dir
             recon_dataset = MRNetDataset(recon_root_dir, split=split, metadata_name=recon_metadata_name, conditioned=False)
             self.recon_df = recon_dataset.df
-            self.p_a = 0.66667
-            self.p_b = 0.5
+            self.p_a = 1 #0.66667
+            self.p_b = 1 #0.5
         else:
             # If reconstructions are not available, use input df (no transformation happening)
             self.recon_root_dir = root_dir
@@ -229,7 +229,7 @@ class MRNetDatasetSS(MRNetDataset):
                 second_img = self.preprocessing_transforms(second_img)
             
             # Possibly flip the image
-            if np.random.rand() > self.p_b:
+            if np.random.rand() < self.p_b:
                 second_img = self.ss_transforms(second_img)
         else:
             second_img = self.ss_transforms(img)
@@ -247,8 +247,8 @@ class MRNetDatasetSS(MRNetDataset):
 if __name__ == '__main__':
     dataset = MRNetDatasetSS(root_dir='data/mrnet', split='val', recon_root_dir='data/mrnet-vqgan-01')
     print(len(dataset))
-    img = dataset.__getitem__(0)['data']
+    img = dataset.__getitem__(50)['data']
     print(img.shape)
-    matplotlib.image.imsave('foo1.png', img[0, 0, 6])
-    matplotlib.image.imsave('foo2.png', img[1, 0, 6])
+    matplotlib.image.imsave('foo1.png', img[0, 0, 16])
+    matplotlib.image.imsave('foo2.png', img[1, 0, 16])
     print('fooed')

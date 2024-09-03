@@ -8,11 +8,12 @@ default_root_dir: checkpoints/ss
 resume: False
 checkpoint_path: 
 
-max_steps: -1
-max_epochs: 16
+max_steps: 50000
+max_epochs: -1
 precision: 16-mixed
 
-lr: 3e-4
+temperature: 0.1
+lr: 3e-5
 n_hiddens: 16  # Number of channels of the input in the first conv before encoding 
 downsample: [4, 4, 4] 
 norm_type: group
@@ -21,4 +22,4 @@ num_groups: 16
 
 wandb_entity: chavelanda
 wandb_project: medicaldiffusion
-run_name: allcts-ss-01
+run_name: mrnet-ss-03

@@ -5,7 +5,7 @@ from omegaconf import DictConfig, open_dict, OmegaConf
 
 import numpy as np
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
 from torch.utils.data import DataLoader
 from dataset.get_dataset import get_dataset
@@ -27,15 +27,16 @@ def run(cfg: DictConfig):
         print("Setting default_root_dir to {}".format(cfg.model.default_root_dir))
         base_dir = cfg.model.default_root_dir
     
-    model = SS(cfg.model.n_hiddens, cfg.model.downsample, image_channels=cfg.dataset.image_channels, 
+    model = SS(cfg.model.n_hiddens, cfg.model.downsample, image_channels=cfg.dataset.image_channels, temperature=cfg.model.temperature,
     norm_type=cfg.model.norm_type, padding_type=cfg.model.padding_type, num_groups=cfg.model.num_groups, lr=cfg.model.lr)
 
-    # Defining callbacks for checkpointing
+    # Defining callbacks for checkpointing and early stopping
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor='val/loss',
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_train_steps=5000, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
+    callbacks.append(EarlyStopping(monitor="val/loss", mode="min", patience=15))
     
 
     # load the most recent checkpoint file
@@ -45,7 +46,10 @@ def run(cfg: DictConfig):
         print('Will resume from the recent ckpt')
 
         # Copy and rename the latest checkpoint file
-        if 'latest_checkpoint.ckpt' in os.listdir(base_dir):
+        if cfg.model.checkpoint_path:
+            ckpt_path = cfg.model.checkpoint_path
+            print(f'Will resume from the recent ckpt {ckpt_path}')
+        elif 'latest_checkpoint.ckpt' in os.listdir(base_dir):
             src_file = os.path.join(base_dir, 'latest_checkpoint.ckpt')
             ckpt_file = 'latest_checkpoint_prev.ckpt'
             ckpt_path = os.path.join(base_dir, ckpt_file)

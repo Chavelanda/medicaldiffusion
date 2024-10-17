@@ -12,7 +12,7 @@ from dataset.utils import show_item
 import matplotlib.image
 
 class AllCTsDataset(Dataset):
-    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False,
+    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', qs=None, binarize=False,
                  resize_d=1, resize_h=1, resize_w=1, conditioned=True, metadata_name='metadata.csv'):
         
         assert split in ['all', 'train', 'val', 'test', 'train-val'], 'Invalid split: {}'.format(split)
@@ -29,6 +29,11 @@ class AllCTsDataset(Dataset):
             self.df = self.df[self.df['split'] != 'test']
         elif split != 'all':
             self.df = self.df[self.df['split'] == split]
+
+        self.qs = qs
+
+        if self.qs is not None:
+            self.df = self.df.loc[self.df['quality'].isin(self.qs)]
 
         self.input_df = self.df.copy()
 
@@ -209,16 +214,16 @@ class AllCTsDatasetSS(AllCTsDataset):
         return {'data': data}
 
 if __name__ == '__main__':
-    dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all', recon_root_dir='data/allcts-vqgan-07')
-    print(len(dataset))
-    img = dataset.__getitem__(0)['data']
-    print(img.shape)
-    matplotlib.image.imsave('foo1.png', img[0, 0, 64, :,:])
-    matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
-    print('fooed')
-
-    # dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='all')
+    # dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all', recon_root_dir='data/allcts-vqgan-07')
     # print(len(dataset))
+    # img = dataset.__getitem__(0)['data']
+    # print(img.shape)
+    # matplotlib.image.imsave('foo1.png', img[0, 0, 64, :,:])
+    # matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
+    # print('fooed')
+
+    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='train-val', qs=[2,3,4,5,6])
+    print(len(dataset))
     # img = dataset.__getitem__(10)['data']
 
     # matplotlib.image.imsave('foo.png', img[0, 65])

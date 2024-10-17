@@ -2,7 +2,7 @@ from dataset import MRNetDataset, MRNetDatasetMSSSIM, MRNetDatasetSS, BRATSDatas
 from torch.utils.data import WeightedRandomSampler
 
 DATASET_CLASSES = {
-    'MRNet': (MRNetDataset, {'train': {'split': 'train', 'conditioned': True, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'val', 'conditioned': True, 'metadata_name': 'metadata.csv'}}),
+    'MRNet': (MRNetDataset, {'train': {'split': 'train', 'conditioned': True, 'metadata_name': 'metadata.csv', 'augment': False}, 'val': {'split': 'val', 'conditioned': True, 'metadata_name': 'metadata.csv', 'augment': False}}),
     'MRNetMSSSIM': (MRNetDatasetMSSSIM, {'train': {'split': 'train', 'metadata_name': 'metadata.csv', 'samples': 1000}, 'val': {'split': 'val', 'metadata_name': 'metadata.csv', 'samples': 1000}}),
     'MRNetSS': (MRNetDatasetSS, {'train': {'split': 'train', 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}, 'val': {'split': 'val', 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}}),
     'BRATS': (BRATSDataset, {'train': {'imgtype': None, 'train': True, 'severity': None, 'resize': None}, 'val': {'imgtype': None, 'train': False, 'severity': None, 'resize': None}}),

@@ -44,6 +44,7 @@ class MRNetDataset(Dataset):
     split='train',
     conditioned=True,
     metadata_name='metadata.csv',
+    augment=False,
     # fold=0
     ):
         assert split in ['all', 'train', 'val'], 'Invalid split: {}'.format(split)
@@ -55,7 +56,7 @@ class MRNetDataset(Dataset):
         self.split = split
         self.conditioned = conditioned
         self.preprocessing_transforms = PREPROCESSING_TRANSORMS
-        self.transforms = TRAIN_TRANSFORMS if split == 'train' else VAL_TRANSFORMS
+        self.transforms = TRAIN_TRANSFORMS if augment else VAL_TRANSFORMS
         # self.fold = fold
         self.d = 32
         self.h = 256

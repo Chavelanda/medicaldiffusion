@@ -163,8 +163,8 @@ class AllCTsDatasetSS(AllCTsDataset):
             self.recon_root_dir = recon_root_dir
             recon_dataset = AllCTsDataset(recon_root_dir, metadata_name=recon_metadata_name, split=split, binarize=binarize, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w)
             self.recon_df = recon_dataset.df
-            self.p_a = 0.66667
-            self.p_b = 0.5
+            self.p_a = 1 # Probability to load the reconstructed image
+            self.p_b = 0 # Probability to flip the image
         else:
             # If reconstructions are not available, use input df (no transformation happening)
             self.recon_root_dir = root_dir
@@ -199,7 +199,7 @@ class AllCTsDatasetSS(AllCTsDataset):
             second_img = self.resize(second_img.unsqueeze(0).float())
             
             # Possibly flip the image
-            if np.random.rand() > self.p_b:
+            if np.random.rand() < self.p_b:
                 second_img = self.transforms(second_img)
         else:
             second_img = self.transforms(img)
@@ -209,7 +209,7 @@ class AllCTsDatasetSS(AllCTsDataset):
         return {'data': data}
 
 if __name__ == '__main__':
-    dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all')
+    dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all', recon_root_dir='data/allcts-vqgan-07')
     print(len(dataset))
     img = dataset.__getitem__(0)['data']
     print(img.shape)

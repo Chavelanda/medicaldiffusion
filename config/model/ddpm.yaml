@@ -1,8 +1,8 @@
-vqgan_ckpt: checkpoints/vq_gan_3d/AllCTs/vqgan-05/best_val.ckpt
+vqgan_ckpt: checkpoints/vq_gan_3d/MRNet/mrnet-vqgan-02/best_val-epoch=98-step=55935.ckpt
 
 # Have to be derived from VQ-GAN Latent space dimensions
-diffusion_img_size: 32
-diffusion_depth_size: 32
+diffusion_img_size: 64
+diffusion_depth_size: 8
 diffusion_num_channels: 8
 dim_mults: 
 results_folder: checkpoints/ddpm
@@ -30,6 +30,6 @@ use_class_cond: True # If true, one-hot class labels are embedded and used as co
 
 wandb_entity: chavelanda
 wandb_project: medicaldiffusion
-run_name: ddpm-filt-lrt-05
+run_name: mrnet-ddpm-02
 
 

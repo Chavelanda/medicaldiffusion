@@ -22,4 +22,4 @@ num_groups: 16
 
 wandb_entity: chavelanda
 wandb_project: medicaldiffusion
-run_name: mrnet-ss-03
+run_name: allcts-ss-02

@@ -6,4 +6,4 @@ size_average: True  # Whether to average the MSSSIM over all pixels.
 
 wandb_entity: chavelanda      # The name of the Weights & Biases entity (user or team) under which the project is located.
 wandb_project: medicaldiffusion     # The name of the Weights & Biases project where the run's results will be logged.
-run_name: msssim-test-qs2         # The name of the current run. This is used to create a subfolder in results_folder for the current run's results.
+run_name: allcts-lf-07-msssim    # The name of the current run. This is used to create a subfolder in results_folder for the current run's results.

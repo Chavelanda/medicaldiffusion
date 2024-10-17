@@ -7,8 +7,8 @@ devices: 1
 accumulate_grad_batches: 1
 default_root_dir: checkpoints/vq_gan_3d
 default_root_dir_postfix: ''
-resume: False
-checkpoint_path: 
+resume: True
+checkpoint_path: checkpoints/vq_gan_3d/MRNet/mrnet-vqgan-01/best_val-epoch=259-step=146900.ckpt
 
 max_steps: 150000
 max_epochs: -1
@@ -22,10 +22,10 @@ lr: 3e-4
 downsample: [4, 4, 4] # [4,4,4]
 disc_channels: 64
 disc_layers: 3
-discriminator_iter_start: 200000
+discriminator_iter_start: 16379
 disc_loss_type: hinge
 image_gan_weight: 1.0
-video_gan_weight: 0.0
+video_gan_weight: 1.0
 l1_weight: 4.0
 gan_feat_weight: 4.0
 perceptual_weight: 4.0
@@ -38,4 +38,4 @@ num_groups: 16
 
 wandb_entity: chavelanda
 wandb_project: medicaldiffusion
-run_name: allcts-vqgan-07
+run_name: allcts-vqgan-08

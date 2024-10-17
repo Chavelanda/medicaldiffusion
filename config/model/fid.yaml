@@ -1,5 +1,5 @@
-stats_dir: evaluation/fid/stats # The directory where the FID statistics will be saved.
-name: dist-lrt-05 # The name used to save the stats.
+stats_dir:  # The directory where the FID statistics will be saved.
+name: allcts-lf-07 # The name used to save the stats.
 
 batch_size: 10 # The number of samples per batch during activations calculation.
 num_workers: 32 # The number of worker processes for data loading.

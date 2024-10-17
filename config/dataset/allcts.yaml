@@ -7,11 +7,12 @@ image_channels: 1
 binarize: True
 
 metadata_name: metadata.csv
-split: train
+split: train-val
+qs: # Leave empty for no filtering. Write as list. E.g. [5] or [2,3,4,5]
 
-val_root_dir: data/allcts-global-128
+val_root_dir: data/allcts-lf-07
 
 val_metadata_name: metadata.csv
-val_split: test
+val_split: all
 
 save_path: data/test # To be specified only when reconstructing images for vq_gan

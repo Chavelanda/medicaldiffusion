@@ -1,6 +1,6 @@
 name: MRNetSS
 root_dir: data/mrnet
-recon_root_dir:
+recon_root_dir: 'data/mrnet-vqgan-01'
 image_channels: 1
 
 metadata_name: metadata.csv

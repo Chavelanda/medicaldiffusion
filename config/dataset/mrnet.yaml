@@ -3,11 +3,13 @@ root_dir: data/mrnet
 image_channels: 1
 
 metadata_name: metadata.csv
-split: train
+split: val
+augment: False
 
-val_root_dir: data/mrnet
+val_root_dir: data/mrnet-lf-01
 val_metadata_name: metadata.csv
-val_split: val
+val_split: all
+val_augment: False
 
 save_path: data/test # To be specified only when reconstructing images for vq_gan
 

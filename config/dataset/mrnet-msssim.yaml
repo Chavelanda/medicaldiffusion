@@ -1,9 +1,9 @@
 name: MRNetMSSSIM
-root_dir: data/mrnet
+root_dir: data/mrnet-lf-01
 image_channels: 1
 
 metadata_name: metadata.csv
-split: train
+split: all
 
 samples: 1000
 

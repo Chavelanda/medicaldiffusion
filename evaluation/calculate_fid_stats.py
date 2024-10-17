@@ -1,3 +1,4 @@
+import os
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 from torch.utils.data import DataLoader
@@ -9,14 +10,14 @@ from evaluation.fid import compute_stats_from_model
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
-    with open_dict(cfg):
-        cfg.model.name = f'{cfg.model.name}-{cfg.dataset.metadata_name[-5]}'
     print('Calculating FID stats with the following config:\n{}'.format(OmegaConf.to_yaml(cfg)))
 
     dataset, *_ = get_dataset(cfg)
     dataloader = DataLoader(dataset, batch_size=cfg.model.batch_size, shuffle=False, num_workers=cfg.model.num_workers)
 
     stats_dir = cfg.model.stats_dir
+    os.makedirs(os.path.dirname(stats_dir), exist_ok=True)
+
     name = cfg.model.name
 
     model_params = {

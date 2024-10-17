@@ -17,8 +17,10 @@ def run(cfg: DictConfig):
 
     dataset1, dataset2, _ = get_dataset(cfg)
     
+    bs = cfg.model.batch_size
+
     dataloader1 = DataLoader(dataset1, batch_size=1, shuffle=False, num_workers=cfg.model.num_workers)
-    dataloader2 = DataLoader(dataset2, batch_size=1, shuffle=False, num_workers=cfg.model.num_workers)
+    dataloader2 = DataLoader(dataset2, batch_size=bs, shuffle=False, num_workers=cfg.model.num_workers)
 
     accelerator = cfg.model.accelerator
 
@@ -46,10 +48,12 @@ def run(cfg: DictConfig):
 
                 x = torch.cat((x1, x2), dim=0)
                 x = x.flatten(start_dim=1)
+
                 coeff = torch.corrcoef(x).cpu().numpy()
-                #print(coeff)
-                #print(coeff.shape)
-                coefficents_matrix[i, j] = coeff[0, 1]
+                coeff = coeff[1:, 0]
+                n_coeff = coeff.size
+
+                coefficents_matrix[i, j*bs:j*bs+n_coeff] = coeff
 
     np.save(filepath, coefficents_matrix)
     

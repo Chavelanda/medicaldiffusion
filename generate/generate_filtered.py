@@ -11,6 +11,8 @@ import torch
 from ddpm import GaussianDiffusion, Unet3D
 from dataset.get_dataset import get_dataset
 
+# da eliminareee
+# from dataset import AllCTsDataset
  
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
@@ -124,6 +126,30 @@ def run(cfg: DictConfig):
             if m > 1:
                 # Compute distance with train latents
                 distance_matrix = torch.cdist(latents, train_latents, p=2.0, compute_mode='use_mm_for_euclid_dist_if_necessary')
+
+                # # FARE MAESTRIE PER CAPIRE DI CHE QS SONO I NEAREST LATENTS
+                # print('WOOOOOOOOOOOOOOOO')
+                # print('Shape latents ', latents.shape)
+                # print('Shape distance matrix ', distance_matrix.shape)
+                # print('shape index min ', torch.argmin(distance_matrix, axis=1).shape)
+                # min_distance_matrix = torch.min(distance_matrix, axis=1)
+                # print('Min distance tuple ', min_distance_matrix)
+                # sorted_idx = torch.argsort(min_distance_matrix[0])
+                # print('Sorted idx for min distance tuple ', sorted_idx)
+                # sorted_min_distance_indexes = min_distance_matrix[1][sorted_idx]
+                # print('Sorted min distance indexes ', sorted_min_distance_indexes)
+
+                # dataset = AllCTsDataset(
+                #     root_dir='./data/allcts-global-128/',
+                #     metadata_name='metadata.csv',
+                #     split='train-val',
+                #     binarize=True,
+                # )
+
+                # print(dataset.df.iloc[sorted_min_distance_indexes.cpu(), :])
+
+                # return None
+                # # FINITE MAESTRIE
 
                 # Select farthest latent every m samples
                 nn, _ = torch.min(distance_matrix.view((-1, m, train_latents.shape[0])), 2)

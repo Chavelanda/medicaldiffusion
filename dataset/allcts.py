@@ -30,12 +30,11 @@ class AllCTsDataset(Dataset):
         elif split != 'all':
             self.df = self.df[self.df['split'] == split]
 
-        self.qs = qs
+        self.input_df = self.df.copy()
 
+        self.qs = qs
         if self.qs is not None:
             self.df = self.df.loc[self.df['quality'].isin(self.qs)]
-
-        self.input_df = self.df.copy()
 
         # Read one 3d image and define sizes
         img, _ = nrrd.read(f'{self.root_dir}/{self.df["name"].iloc[0]}.nrrd')

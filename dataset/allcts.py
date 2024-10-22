@@ -56,7 +56,7 @@ class AllCTsDataset(Dataset):
 
         # Condition
         self.conditioned = conditioned
-        self.cond_dim = self.df['quality'].nunique()
+        self.cond_dim = self.input_df['quality'].nunique()
 
         # One-hot encoding of the condition
         self.df = pd.get_dummies(self.df, columns=['quality'])

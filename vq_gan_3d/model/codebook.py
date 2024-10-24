@@ -51,32 +51,38 @@ class Codebook(nn.Module):
         # z: [b, c, t, h, w]
         if self._need_init and self.training:
             self._init_embeddings(z)
+        # we want each vector with length 8. let's call it z_n
         flat_inputs = shift_dim(z, 1, -1).flatten(end_dim=-2)  # [bthw, c]
-        distances = torch.cdist(flat_inputs, self.embeddings, p=2)  # [bthw, c]
+        # for each z_n, calculating the distance with all the vectors in the codebook 
+        distances = torch.cdist(flat_inputs, self.embeddings, p=2)  # [bthw, n_codes]
+        # getting the index of the closest one
+        encoding_indices = torch.argmin(distances, dim=1) # [bthw]
+        # for each code, compute how many times it was "called"
+        n_total = torch.bincount(encoding_indices, minlength=self.n_codes) # [n_codes]
 
-        encoding_indices = torch.argmin(distances, dim=1)
-        
-        # One hot is here because of the shape of encoding_indices
-        encode_onehot = F.one_hot(encoding_indices, self.n_codes).to(torch.int8)  # [bthw, ncode]
+        # for each code index, sum all z_n mapped to it
+        encode_sum = torch.zeros((self.n_codes, self.embedding_dim), device=flat_inputs.device, dtype=torch.float)
+        encode_sum.index_add_(0, encoding_indices, flat_inputs.type_as(encode_sum))
 
-        encoding_indices = encoding_indices.view(z.shape[0], *z.shape[2:])  # [b, t, h, w, ncode]
+        # Reshape indices as input data. For each z_n we have an index
+        encoding_indices = encoding_indices.view(z.shape[0], *z.shape[2:])  # [b, t, h, w]
         
+        # Extract corresponding code from codebook
         embeddings = F.embedding(
             encoding_indices, self.embeddings)  # [b, t, h, w, c]
         embeddings = shift_dim(embeddings, -1, 1)  # [b, c, t, h, w]
 
+        # Calculate how much the input differs from the embedding
         commitment_loss = 0.25 * F.mse_loss(z, embeddings.detach())
 
         # EMA codebook update
-        n_total = encode_onehot.sum(dim=0)
         if self.training:
-            encode_sum = flat_inputs.t() @ encode_onehot.type_as(flat_inputs)
             if dist.is_initialized():
                 dist.all_reduce(n_total)
                 dist.all_reduce(encode_sum)
 
             self.N.data.mul_(0.99).add_(n_total, alpha=0.01)
-            self.z_avg.data.mul_(0.99).add_(encode_sum.t(), alpha=0.01)
+            self.z_avg.data.mul_(0.99).add_(encode_sum, alpha=0.01)
           
             n = self.N.sum()
             weights = (self.N + 1e-7) / (n + self.n_codes * 1e-7) * n

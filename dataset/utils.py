@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import nrrd
 import mcubes
 
-def show_item(img, vmin=0, vmax=1):
+def show_item(img, vmin=0, vmax=1, name='foo'):
     img = np.rot90(img, k=1, axes=(0, 2))
 
     # Get the slice index
@@ -30,6 +30,7 @@ def show_item(img, vmin=0, vmax=1):
     axs[2].set_title('Coronal View')
 
     # Show the plot
+    plt.savefig(f'{name}.png')
     plt.show()
 
 def show_image_grid(images, axis=2, slices=(0,20,40,60,80), vmax=1, vmin=-1, names=None):

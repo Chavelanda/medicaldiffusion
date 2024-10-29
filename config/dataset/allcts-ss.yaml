@@ -1,11 +1,10 @@
 name: AllCTsSS
 root_dir: data/allcts-global-128
 recon_root_dir: data/allcts-vqgan-07
-resize_d: 1
-resize_h: 1
-resize_w: 1
+resize: 1
 image_channels: 1
 binarize: True
+rescale: True # If True, rescale to [-1,1]. If False, stays in range [0,1]
 
 metadata_name: metadata.csv
 recon_metadata_name: 'metadata.csv'

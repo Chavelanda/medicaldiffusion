@@ -4,8 +4,8 @@ from dataset.allcts import AllCTsDataset
 
 class AllCts_MSSSIM(AllCTsDataset):
 
-    def __init__(self, root_dir, split, resize_d=1, resize_h=1, resize_w=1, binarize=False, samples=1000, metadata_name='metadata.csv'):
-        super().__init__(root_dir=root_dir, split=split, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w, binarize=binarize, conditioned=False, metadata_name=metadata_name)
+    def __init__(self, root_dir, split, resize=1, binarize=False, rescale=True, samples=1000, metadata_name='metadata.csv'):
+        super().__init__(root_dir=root_dir, split=split, resize=resize, binarize=binarize, rescale=rescale, conditioned=False, metadata_name=metadata_name)
 
         self.samples = samples
 

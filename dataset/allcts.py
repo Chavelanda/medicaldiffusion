@@ -12,8 +12,8 @@ from dataset.utils import show_item
 import matplotlib.image
 
 class AllCTsDataset(Dataset):
-    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', qs=None, binarize=False,
-                 resize_d=1, resize_h=1, resize_w=1, conditioned=True, metadata_name='metadata.csv'):
+    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', qs=None, 
+                binarize=False, rescale=True, resize=1, conditioned=True, metadata_name='metadata.csv'):
         
         assert split in ['all', 'train', 'val', 'test', 'train-val'], 'Invalid split: {}'.format(split)
 
@@ -40,18 +40,19 @@ class AllCTsDataset(Dataset):
         img, _ = nrrd.read(f'{self.root_dir}/{self.df["name"].iloc[0]}.nrrd')
         d, h, w = img.shape
       
-        self.resize_d = resize_d
-        self.resize_h = resize_h
-        self.resize_w = resize_w
+        self.resize = resize
 
         # Update sizes based on resize
-        self.d, self.h, self.w, = d//self.resize_d, h//self.resize_h, w//self.resize_w
+        self.d, self.h, self.w, = d//self.resize, h//self.resize, w//self.resize
 
         # Resize transform
-        self.resize = tio.Resample((self.resize_d, self.resize_h, self.resize_w))
+        self.resize = tio.Resample(self.resize)
 
         # Binarize
         self.binarize = binarize
+
+        # Rescale
+        self.rescale = rescale
 
         # Condition
         self.conditioned = conditioned
@@ -73,8 +74,9 @@ class AllCTsDataset(Dataset):
         if self.binarize:
             img = (img > 0.5).float()
 
-        #  min-max normalized to the range between -1 and 1
-        img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
+        if self.rescale:
+            #  min-max normalized to the range between -1 and 1
+            img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
 
         img = img.unsqueeze(0).float()
         img = self.resize(img)
@@ -149,11 +151,11 @@ class AllCTsDataset(Dataset):
 
 class AllCTsDatasetSS(AllCTsDataset):
     
-    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False,
-                 resize_d=1, resize_h=1, resize_w=1, metadata_name='metadata.csv',
+    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False, rescale=True,
+                 resize=1, metadata_name='metadata.csv',
                  recon_root_dir=None, recon_metadata_name='metadata.csv'):
         
-        super().__init__(root_dir=root_dir, split=split, binarize=binarize, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w, metadata_name=metadata_name)
+        super().__init__(root_dir=root_dir, split=split, binarize=binarize, rescale=rescale, resize=resize, metadata_name=metadata_name)
 
         # Define transforms
         self.transforms = tio.Compose([
@@ -183,11 +185,12 @@ class AllCTsDatasetSS(AllCTsDataset):
         img, _ = nrrd.read(path)
         img = torch.from_numpy(img)
 
-        #  min-max normalized to the range between -1 and 1
-        img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
-
         if self.binarize:
-            img = (img > 0.).float()
+            img = (img > 0.5).float()
+
+        if self.rescale:
+            #  min-max normalized to the range between -1 and 1
+            img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
 
         img = img.unsqueeze(0).float()
         img = self.resize(img)
@@ -221,10 +224,12 @@ if __name__ == '__main__':
     # matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
     # print('fooed')
 
-    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='train-val', qs=[2,3,4,5,6])
+    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='train-val', resize=1, qs=[2,3,4,5,6], rescale=False)
     print(len(dataset))
-    # img = dataset.__getitem__(10)['data']
+    img = dataset.__getitem__(10)['data']
 
+    print(torch.max(img), torch.min(img))
+    print(img.shape)
     # matplotlib.image.imsave('foo.png', img[0, 65])
 
     # print('fooed again')

@@ -19,6 +19,7 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
+    torch.cuda.memory._record_memory_history()
     pl.seed_everything(cfg.model.seed)
 
     train_dataset, val_dataset, sampler = get_dataset(cfg)
@@ -84,8 +85,13 @@ def run(cfg: DictConfig):
     )
 
     torch.set_float32_matmul_precision('medium')
-    trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
+    try:
+        trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
+    except Exception as error:
+        print("An exception occurred:", error)
+        torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
 
+    torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
 
 if __name__ == '__main__':
     run()

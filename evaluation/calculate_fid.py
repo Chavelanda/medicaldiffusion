@@ -17,10 +17,10 @@ from medicalnet import resnet_gap
 def run(cfg: DictConfig):
     print('Calculating FID with the following config:\n{}'.format(OmegaConf.to_yaml(cfg)))
 
-    # wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
+    wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
 
-    # wandb.config.update(OmegaConf.to_container(cfg.dataset))
-    # wandb.config.update(OmegaConf.to_container(cfg.model))
+    wandb.config.update(OmegaConf.to_container(cfg.dataset))
+    wandb.config.update(OmegaConf.to_container(cfg.model))
 
     dataset_real, dataset_gen, _ = get_dataset(cfg)
     dl_real = DataLoader(dataset_real, batch_size=cfg.model.batch_size, shuffle=True, num_workers=cfg.model.num_workers)

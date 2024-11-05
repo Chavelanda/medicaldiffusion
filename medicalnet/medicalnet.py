@@ -296,7 +296,7 @@ def resnet_gap(resnet_func='resnet50', pretrain_path=None, **kwargs):
             new_key = key.replace('module.', '')
             not_parallel_weights_dict[new_key] = value
             
-        model.load_state_dict(not_parallel_weights_dict, strict=False)
+    model.load_state_dict(not_parallel_weights_dict, strict=True)
     else:
         print('No pretrained weights loaded')
 

@@ -277,7 +277,7 @@ model_func_weights = {
     'resnet200': [resnet200, 'resnet_200.pth'],
 }
 
-def resnet_gap(resnet_func, pretrain_path=None, **kwargs):
+def resnet_gap(resnet_func='resnet50', pretrain_path=None, **kwargs):
     """Constructs a pretrained ResNet model with GAP as last layer."""
 
     # Instantiating the model

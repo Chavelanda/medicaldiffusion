@@ -13,4 +13,8 @@ val_augment: False
 
 save_path: data/test # To be specified only when reconstructing images for vq_gan
 
+# To be specified for Med3D fid evaluation
+d: 32
+h: 256
+w: 256
 

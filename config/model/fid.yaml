@@ -1,16 +1,20 @@
-# vecchio metodo
-# stats_dir:  # The directory where the FID statistics will be saved. # Forse non serve nel nuovo metodo
-# name: allcts-lf-07 # The name used to save the stats.
-
-# config in comune
-batch_size: 150 # The number of samples per batch during activations calculation.
+batch_size: 10 # The number of samples per batch during activations calculation.
 num_workers: 10 # The number of worker processes for data loading.
 
-resnet: resnet50 # The specific type of ResNet model to use.
+extractor: vqvae # The specific type of ResNet model to use.
 
 cuda: True # A boolean indicating whether to use CUDA for computation.
 
 # Per il nuovo metodo
-wandb_entity: 
-wandb_project: 
-run_name: 
+epochs: 1
+
+wandb_entity: chavelanda
+wandb_project: medicaldiffusion
+run_name: fid-test
+
+# per vqvae extractor
+vqvae_checkpoint: checkpoints/vq_gan_3d/AllCTs/allcts-vqgan-07/best_val-epoch=411-step=149968.ckpt
+
+# vecchio metodo
+# stats_dir:  # The directory where the FID statistics will be saved. # Forse non serve nel nuovo metodo
+# name: allcts-lf-07 # The name used to save the stats.

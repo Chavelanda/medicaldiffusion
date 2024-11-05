@@ -26,7 +26,7 @@ def run(cfg: DictConfig):
     dl_real = DataLoader(dataset_real, batch_size=cfg.model.batch_size, shuffle=True, num_workers=cfg.model.num_workers)
     dl_gen = DataLoader(dataset_gen, batch_size=cfg.model.batch_size, shuffle=True, num_workers=cfg.model.num_workers)
 
-    extractor = get_extractor(cfg)
+    extractor = get_extractor(cfg).eval()
 
     device = 'cuda' if cfg.model.cuda else 'cpu'
 
@@ -41,41 +41,42 @@ def run(cfg: DictConfig):
     epochs = cfg.model.epochs
 
     pbar = trange(epochs)
+    
+    with torch.no_grad():
+        for e in pbar:
+            for batch in tqdm(dl_real, leave=True):
+                # Update FID with real features
+                batch = batch['data'].to(device)        
+                fid.update(batch, real=True)
 
-    for e in pbar:
-        for batch in tqdm(dl_real, leave=True):
-            # Update FID with real features
-            batch = batch['data'].to(device)        
-            fid.update(batch, real=True)
+            for batch in tqdm(dl_gen, leave=True):
+                # Update FID with gen features
+                batch = batch['data'].to(device)#.to(torch.float64)
+                fid.update(batch, real=False)
 
-        for batch in tqdm(dl_gen, leave=True):
-            # Update FID with gen features
-            batch = batch['data'].to(device)#.to(torch.float64)
-            fid.update(batch, real=False)
+            # Computing ignite FID
+            # assert len(dl_real) == len(dl_gen), 'Real and generated datasets must have same lenght'
 
-        # Computing ignite FID
-        # assert len(dl_real) == len(dl_gen), 'Real and generated datasets must have same lenght'
+            # dl_real_iterator = iter(dl_real)
+            # dl_gen_iterator = iter(dl_gen)
 
-        # dl_real_iterator = iter(dl_real)
-        # dl_gen_iterator = iter(dl_gen)
+            # for i in trange(len(dl_real)):
+            #     batch_real = next(dl_real_iterator)['data'].to(device)
+            #     batch_gen = next(dl_gen_iterator)['data'].to(device)
 
-        # for i in trange(len(dl_real)):
-        #     batch_real = next(dl_real_iterator)['data'].to(device)
-        #     batch_gen = next(dl_gen_iterator)['data'].to(device)
+            #     fid.update(batch_real, real=True)
+            #     fid.update(batch_gen, real=False)
 
-        #     fid.update(batch_real, real=True)
-        #     fid.update(batch_gen, real=False)
+            #     ignite_fid.update((batch_real, batch_gen))
 
-        #     ignite_fid.update((batch_real, batch_gen))
-
-        # Compute FID
-        fid_score = fid.compute()
-        # ignite_fid_score = ignite_fid.compute()
-        
-        wandb.log({'fid': fid_score, 'epoch': e})
-        pbar.set_description(f'FID score at epoch {e}: {fid_score}')
-        # wandb.log({'fid': fid_score, 'ignite_fid': ignite_fid_score, 'epoch': e})
-        # pbar.set_description(f'FID score at epoch {e}: {fid_score}/{ignite_fid_score}')
+            # Compute FID
+            fid_score = fid.compute()
+            # ignite_fid_score = ignite_fid.compute()
+            
+            wandb.log({'fid': fid_score, 'epoch': e})
+            pbar.set_description(f'FID score at epoch {e}: {fid_score}')
+            # wandb.log({'fid': fid_score, 'ignite_fid': ignite_fid_score, 'epoch': e})
+            # pbar.set_description(f'FID score at epoch {e}: {fid_score}/{ignite_fid_score}')
 
 if __name__ == '__main__':
     run()

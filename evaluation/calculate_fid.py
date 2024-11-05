@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
 import wandb
 from torchmetrics.image.fid import FrechetInceptionDistance
-# from ignite.metrics import FID
 
 from dataset.get_dataset import get_dataset
 from evaluation.fid.get_extractor import get_extractor
@@ -32,11 +31,8 @@ def run(cfg: DictConfig):
 
     extractor.to(device)
 
-    fid = FrechetInceptionDistance(feature=extractor, normalize=True, compute_on_cpu=True, input_img_size=(cfg.dataset.image_channels, dataset_real.d, dataset_real.h, dataset_real.w))  
-    # ignite_fid = FID(num_features=2048, feature_extractor=model, device=device)
-
+    fid = FrechetInceptionDistance(feature=extractor, normalize=True, compute_on_cpu=True, input_img_size=(cfg.dataset.image_channels, dataset_real.d, dataset_real.h, dataset_real.w))
     fid.reset()
-    # ignite_fid.reset()
 
     epochs = cfg.model.epochs
 
@@ -54,29 +50,12 @@ def run(cfg: DictConfig):
                 batch = batch['data'].to(device)#.to(torch.float64)
                 fid.update(batch, real=False)
 
-            # Computing ignite FID
-            # assert len(dl_real) == len(dl_gen), 'Real and generated datasets must have same lenght'
-
-            # dl_real_iterator = iter(dl_real)
-            # dl_gen_iterator = iter(dl_gen)
-
-            # for i in trange(len(dl_real)):
-            #     batch_real = next(dl_real_iterator)['data'].to(device)
-            #     batch_gen = next(dl_gen_iterator)['data'].to(device)
-
-            #     fid.update(batch_real, real=True)
-            #     fid.update(batch_gen, real=False)
-
-            #     ignite_fid.update((batch_real, batch_gen))
-
             # Compute FID
             fid_score = fid.compute()
-            # ignite_fid_score = ignite_fid.compute()
             
             wandb.log({'fid': fid_score, 'epoch': e})
             pbar.set_description(f'FID score at epoch {e}: {fid_score}')
-            # wandb.log({'fid': fid_score, 'ignite_fid': ignite_fid_score, 'epoch': e})
-            # pbar.set_description(f'FID score at epoch {e}: {fid_score}/{ignite_fid_score}')
+
 
 if __name__ == '__main__':
     run()

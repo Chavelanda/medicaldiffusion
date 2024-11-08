@@ -4,6 +4,9 @@ import os
 #os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:500'
 import shutil
 
+import wandb
+import hydra
+from omegaconf import DictConfig, OmegaConf, open_dict
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
@@ -13,13 +16,11 @@ from ddpm.diffusion import default
 from vq_gan_3d.model import VQGAN
 #from train.callbacks import ImageLogger, VideoLogger
 from dataset.get_dataset import get_dataset
-import hydra
-from omegaconf import DictConfig, OmegaConf, open_dict
 
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
-    torch.cuda.memory._record_memory_history()
+    # torch.cuda.memory._record_memory_history()
     pl.seed_everything(cfg.model.seed)
 
     train_dataset, val_dataset, sampler = get_dataset(cfg)
@@ -67,10 +68,6 @@ def run(cfg: DictConfig):
 
     # create wandb logger
     wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model="all")
-    
-    wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.dataset))
-    wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.model))
-    wandb_logger.experiment.config["ckpt_path"] = ckpt_path
 
     trainer = pl.Trainer(
         accelerator=cfg.model.accelerator,
@@ -82,16 +79,25 @@ def run(cfg: DictConfig):
         max_epochs=cfg.model.max_epochs,
         precision=cfg.model.precision,
         logger=wandb_logger,
+        strategy='ddp_find_unused_parameters_true'
     )
 
+    # Updating wandb configs
+    if trainer.global_rank == 0:
+        wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.dataset))
+        wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.model))
+        wandb_logger.experiment.config["ckpt_path"] = ckpt_path
+
     torch.set_float32_matmul_precision('medium')
+
     try:
         trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
     except Exception as error:
         print("An exception occurred:", error)
-        torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
-
-    torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
+    finally:
+        # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
+        pass
+        
 
 if __name__ == '__main__':
     run()

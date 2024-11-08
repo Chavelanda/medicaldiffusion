@@ -109,81 +109,62 @@ class VQGAN(pl.LightningModule):
         h = self.post_vq_conv(shift_dim(h, -1, 1))
         return self.decoder(h)
 
-    def forward(self, x, optimizer_idx=None, log_image=False, name='train', test=False):
+    def forward(self, x, optimizer_idx=None, name='train'):
         B, C, T, H, W = x.shape
 
         losses = {}
 
-        # print('Encoder')
         z = self.pre_vq_conv(self.encoder(x))
-        # print('Codebook')
         vq_output = self.codebook(z)
-        # print('Decoder')
         x_recon = self.decoder(self.post_vq_conv(vq_output['embeddings']))
 
-        if test:
-            return x_recon
+        if name=='test': return x_recon
 
-        # print('Losses')
+        # VQ-VAE losses
         losses[f'{name}/perplexity'] = vq_output['perplexity']
         losses[f'{name}/commitment_loss'] = vq_output['commitment_loss']
         losses[f'{name}/recon_loss'] = F.l1_loss(x_recon, x) * self.l1_weight
 
-        # print('Selecting random frames')
         # Selects one random 2D image from each 3D Image
         frame_idx = torch.randint(0, T, [B]).to(self.device)
         frame_idx_selected = frame_idx.reshape(-1, 1, 1, 1, 1).repeat(1, C, 1, H, W)
         frames = torch.gather(x, 2, frame_idx_selected).squeeze(2)
         frames_recon = torch.gather(x_recon, 2, frame_idx_selected).squeeze(2)
+        # Still VQ-VAE loss
+        if optimizer_idx != 1: losses[f'{name}/perceptual_loss'] = self.perceptual_loss(frames, frames_recon)
 
-        if log_image:
-            # print('Logging images')
-            self.logger.experiment.log({'samples': [wandb.Image(frames[0].cpu(), caption='original'), wandb.Image(frames_recon[0].cpu().to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
-
-        # print('adopt weight')
+        # VQ-GAN losses
         disc_factor = adopt_weight(self.global_step, threshold=self.cfg.model.discriminator_iter_start)
-        # Autoencoder - train the "generator"
-        if optimizer_idx == 0:
-            # Perceptual loss
-            losses[f'{name}/perceptual_loss'] = self.perceptual_loss(frames, frames_recon)
-
-            # Discriminator loss (turned on after a certain epoch)
-            if disc_factor > 0:
-                pred_image_fake, pred_video_fake, losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/aeloss'] = self.dg_loss(x_recon, frames_recon, disc_factor)
-
-                # GAN feature matching loss - tune features such that we get the same prediction result on the discriminator
-                losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = self.gan_feat_loss(x, frames, pred_image_fake, pred_video_fake, disc_factor)
-            else:
-                losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/aeloss'], losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device), torch.zeros(1).to(self.device)
-
+        # Train the "generator" (autoencoder)
+        if optimizer_idx == 0 and disc_factor > 0:            
+            pred_image_fake, pred_video_fake, losses[f'{name}/g_image_loss'], losses[f'{name}/g_video_loss'], losses[f'{name}/g_loss'] = self.dg_loss(x_recon, frames_recon, disc_factor)
+            # GAN feature matching loss - tune features such that we get the same prediction result on the discriminator
+            losses[f'{name}/image_gan_feat_loss'], losses[f'{name}/video_gan_feat_loss'], losses[f'{name}/gan_feat_loss'] = self.gan_feat_loss(x, frames, pred_image_fake, pred_video_fake, disc_factor)    
         # Train discriminator
         elif optimizer_idx == 1:
             # Discriminator loss
-            #losses[f'{name}/logits_image_real'], losses[f'{name}/logits_video_real'], losses[f'{name}/logits_image_fake'], losses[f'{name}/logits_video_fake'], losses[f'{name}/d_image_loss'], losses[f'{name}/d_video_loss'], losses[f'{name}/discloss'] = self.dd_loss(x, x_recon, frames, frames_recon, disc_factor)
             _, _, _, _, losses[f'{name}/d_image_loss'], losses[f'{name}/d_video_loss'], losses[f'{name}/discloss'] = self.dd_loss(x, x_recon, frames, frames_recon, disc_factor)
-            
-        # Validation
-        else:
-            # print('Perceptual loss')
-            losses[f'{name}/perceptual_loss'] = self.perceptual_loss(frames, frames_recon)
         
-        return x_recon, losses
+        return x_recon, losses, (frames[0].detach().cpu(), frames_recon[0].detach().cpu())
 
-    def dd_loss(self, x, x_recon, frames, frames_recon, disc_factor):
-        logits_image_real, _ = self.image_discriminator(frames.detach())
-        logits_video_real, _ = self.video_discriminator(x.detach())
-
-        logits_image_fake, _ = self.image_discriminator(frames_recon.detach())
-        logits_video_fake, _ = self.video_discriminator(x_recon.detach())
-
-        d_image_loss = self.disc_loss(logits_image_real, logits_image_fake)
-        d_video_loss = self.disc_loss(logits_video_real, logits_video_fake)
+    def perceptual_loss(self, frames, frames_recon):
+        perceptual_loss = torch.zeros(1).to(self.device)
+        if self.perceptual_weight > 0:
+            perceptual_loss = self.perceptual_model(frames, frames_recon).mean() * self.perceptual_weight       
         
-        discloss = disc_factor * \
-                (self.image_gan_weight*d_image_loss +
-                 self.video_gan_weight*d_video_loss)
-             
-        return logits_image_real.mean().detach(), logits_video_real.mean().detach(), logits_image_fake.mean().detach(), logits_video_fake.mean().detach(), d_image_loss, d_video_loss, discloss
+        return perceptual_loss
+
+    def dg_loss(self, x_recon, frames_recon, disc_factor):
+        logits_image_fake, pred_image_fake = self.image_discriminator(frames_recon)
+        logits_video_fake, pred_video_fake = self.video_discriminator(x_recon)
+        
+        g_image_loss = -torch.mean(logits_image_fake).to(self.device)
+        g_video_loss = -torch.mean(logits_video_fake).to(self.device)
+        g_loss = self.image_gan_weight*g_image_loss + self.video_gan_weight*g_video_loss
+        
+        g_loss = disc_factor * g_loss
+
+        return pred_image_fake, pred_video_fake, g_image_loss, g_video_loss, g_loss
 
     def gan_feat_loss(self, x, frames, pred_image_fake, pred_video_fake, disc_factor):
         image_gan_feat_loss = 0
@@ -207,24 +188,21 @@ class VQGAN(pl.LightningModule):
             
         return image_gan_feat_loss,video_gan_feat_loss,gan_feat_loss
 
-    def dg_loss(self, x_recon, frames_recon, disc_factor):
-        logits_image_fake, pred_image_fake = self.image_discriminator(frames_recon)
-        logits_video_fake, pred_video_fake = self.video_discriminator(x_recon)
-        
-        g_image_loss = -torch.mean(logits_image_fake).to(self.device)
-        g_video_loss = -torch.mean(logits_video_fake).to(self.device)
-        g_loss = self.image_gan_weight*g_image_loss + self.video_gan_weight*g_video_loss
-        
-        aeloss = disc_factor * g_loss
+    def dd_loss(self, x, x_recon, frames, frames_recon, disc_factor):
+        logits_image_real, _ = self.image_discriminator(frames.detach())
+        logits_video_real, _ = self.video_discriminator(x.detach())
 
-        return pred_image_fake, pred_video_fake, g_image_loss, g_video_loss, aeloss
+        logits_image_fake, _ = self.image_discriminator(frames_recon.detach())
+        logits_video_fake, _ = self.video_discriminator(x_recon.detach())
 
-    def perceptual_loss(self, frames, frames_recon):
-        perceptual_loss = torch.zeros(1).to(self.device)
-        if self.perceptual_weight > 0:
-            perceptual_loss = self.perceptual_model(frames, frames_recon).mean() * self.perceptual_weight       
+        d_image_loss = self.disc_loss(logits_image_real, logits_image_fake)
+        d_video_loss = self.disc_loss(logits_video_real, logits_video_fake)
         
-        return perceptual_loss
+        discloss = disc_factor * \
+                (self.image_gan_weight*d_image_loss +
+                 self.video_gan_weight*d_video_loss)
+             
+        return logits_image_real.mean().detach(), logits_video_real.mean().detach(), logits_image_fake.mean().detach(), logits_video_fake.mean().detach(), d_image_loss, d_video_loss, discloss
 
     def training_step(self, batch, batch_idx):
         opt_ae, opt_disc = self.optimizers()
@@ -233,24 +211,27 @@ class VQGAN(pl.LightningModule):
         
         train_gen = self.global_step % 2 == 0 
 
-        # Train generator
+        # Train autoencoder
         if train_gen or self.global_step < self.cfg.model.discriminator_iter_start:
-            _, losses = self.forward(x, optimizer_idx=0, name='train_g')
+            _, losses, _ = self.forward(x, optimizer_idx=0, name='train')
             
-            loss_ae = losses['train_g/recon_loss'] + losses['train_g/commitment_loss'] + losses['train_g/aeloss'] + losses['train_g/perceptual_loss'] + losses['train_g/gan_feat_loss']
+            # Losses VQ-VAE
+            loss_ae = losses['train/recon_loss'] + losses['train/commitment_loss'] + losses['train/perceptual_loss']
             
+            # Losses VQ-GAN
+            if self.global_step >= self.cfg.model.discriminator_iter_start:
+                loss_ae += losses['train/g_loss'] + losses['train/gan_feat_loss']
+
+            losses['train/loss_ae'] = loss_ae
+
             opt_ae.zero_grad()
             self.manual_backward(loss_ae)
             self.clip_gradients(opt_ae, self.gradient_clip_val)
             opt_ae.step()
-            
-            #wandb.log(losses)
-            # del losses['trainer/global_step']
-            self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
         
-        # Train discriminator when needed
+        # Train discriminator
         elif not train_gen and self.global_step >= self.cfg.model.discriminator_iter_start:
-            _, losses = self.forward(x, optimizer_idx=1, name='train_d')
+            _, losses, _ = self.forward(x, optimizer_idx=1, name='train_d')
             
             loss_disc = losses['train_d/discloss']
             
@@ -259,24 +240,24 @@ class VQGAN(pl.LightningModule):
             self.clip_gradients(opt_disc, self.gradient_clip_val)
             opt_disc.step()
             
-            #wandb.log(losses)
-            # del losses['trainer/global_step']
-            self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=True)
-
+        self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
 
     def validation_step(self, batch, batch_idx):
-        x = batch['data']  # TODO: batch['stft']
-        if batch_idx == 0:
-            _, losses = self.forward(x, name='val', log_image=True)
-        else:
-            _, losses = self.forward(x, name='val')
+        x = batch['data'] 
+        _, losses, frames = self.forward(x, name='val')
+        
+        loss_ae = losses['val/recon_loss'] + losses['val/commitment_loss'] + losses['val/perceptual_loss']
+        losses['val/loss_ae'] = loss_ae
 
-        self.log_dict(losses, prog_bar=True)
-        # wandb.log(losses)
+        # Log image
+        if batch_idx == 0:
+            self.logger.experiment.log({'samples': [wandb.Image(frames[0], caption='original'), wandb.Image(frames[1].to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
+        
+        self.log_dict(losses, prog_bar=True, sync_dist=True)
 
     def test_step(self, batch, batch_idx):
         x = batch['data']
-        x_recon = self.forward(x, test=True)
+        x_recon = self.forward(x, name='test')
         return x_recon
 
     def configure_optimizers(self):

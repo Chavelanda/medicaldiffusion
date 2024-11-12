@@ -160,6 +160,7 @@ data/
 pretrain/
 *.pkl
 *.pt
+*.model
 
 # Stats
 stats/

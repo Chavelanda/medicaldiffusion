@@ -36,7 +36,7 @@ def run(cfg: DictConfig):
     epochs = cfg.model.epochs
 
     pbar = trange(epochs)
-    
+
     with torch.no_grad():
         for e in pbar:
             for batch in tqdm(dl_real, leave=True):

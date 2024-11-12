@@ -1,5 +1,6 @@
 from foundation.medicalnet import resnet_gap
 from foundation.stunet.get_stunet import get_stunet
+from foundation.misfm.get_misfm import get_misfm
 from vq_gan_3d.model import FIDEncoder
 
 
@@ -29,10 +30,19 @@ def cfg_to_vqvae(cfg):
     return params
 
 
+def cfg_to_misfm(cfg):
+    params = standard_converter(cfg)
+    
+    params['input_size'] = (params['d'], params['w'], params['h'])
+
+    return params
+
+
 EXTRACTORS = {
     'med3d': (resnet_gap, cfg_to_med3d, {'resnet_func': 'resnet50', 'pretrain_path': 'foundation/medicalnet/pretrain/', 'num_seg_classes': 2, 'sample_input_D': 128, 'sample_input_H': 128, 'sample_input_W': 128, 'no_cuda': False}),
     'vqvae': (FIDEncoder, cfg_to_vqvae, {'ckpt': None}),
     'stunet': (get_stunet, standard_converter, {}),
+    'misfm': (get_misfm, cfg_to_misfm, {'input_size': (128, 128, 128)})
 }
 
 

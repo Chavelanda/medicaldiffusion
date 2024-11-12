@@ -158,6 +158,8 @@ data/
 
 # Pretrained models
 pretrain/
+*.pkl
+*.pt
 
 # Stats
 stats/

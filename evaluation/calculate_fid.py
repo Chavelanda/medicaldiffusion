@@ -9,7 +9,6 @@ from torchmetrics.image.fid import FrechetInceptionDistance
 
 from dataset.get_dataset import get_dataset
 from evaluation.fid.get_extractor import get_extractor
-from medicalnet import resnet_gap
 
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)

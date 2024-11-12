@@ -1,1 +1,0 @@
-from medicalnet.medicalnet import resnet_gap, __all__ as model_names

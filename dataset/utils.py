@@ -142,7 +142,10 @@ def rename_files(folder):
 
 
 # Build mesh from voxel grid
-def build_mesh(voxels, threshold=0.5, name='mesh', output_folder=None, spacing=[0.46262616, 0.3345859, 0.49944812]):
+def build_mesh(voxels, threshold=0.5, name='mesh', output_folder=None, spacing=[0.46262616, 0.3345859, 0.49944812], rotate=True, translate=(0,0,0)):
+    if rotate:
+        voxels = np.rot90(voxels, k=1, axes=(0,1))
+
     # voxels = mcubes.smooth(voxels)
     vertices, triangles = mcubes.marching_cubes(voxels, threshold)
 
@@ -150,7 +153,8 @@ def build_mesh(voxels, threshold=0.5, name='mesh', output_folder=None, spacing=[
     vertices = vertices * np.array(spacing)
 
     mesh = o3d.geometry.TriangleMesh(vertices=o3d.utility.Vector3dVector(vertices), triangles=o3d.utility.Vector3iVector(triangles))
-    
+    mesh = mesh.translate((translate))
+
     print(mesh)
     
     mesh.compute_vertex_normals()

@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm, trange
 import wandb
 from torchmetrics.image.fid import FrechetInceptionDistance
+from torchmetrics.image.kid import KernelInceptionDistance
 
 from dataset.get_dataset import get_dataset
 from evaluation.fid.get_extractor import get_extractor
@@ -33,6 +34,9 @@ def run(cfg: DictConfig):
     fid = FrechetInceptionDistance(feature=extractor, normalize=True, compute_on_cpu=True, input_img_size=(cfg.dataset.image_channels, dataset_real.d, dataset_real.h, dataset_real.w))
     fid.reset()
 
+    kid = KernelInceptionDistance(feature=extractor, compute_on_cpu=True, subset_size=len(dataset_gen))
+    kid.reset()
+
     epochs = cfg.model.epochs
 
     pbar = trange(epochs)
@@ -43,16 +47,20 @@ def run(cfg: DictConfig):
                 # Update FID with real features
                 batch = batch['data'].to(device)        
                 fid.update(batch, real=True)
+                kid.update(batch, real=True)
 
             for batch in tqdm(dl_gen, leave=True):
                 # Update FID with gen features
                 batch = batch['data'].to(device)#.to(torch.float64)
                 fid.update(batch, real=False)
+                kid.update(batch, real=False)
+
 
             # Compute FID
             fid_score = fid.compute()
+            kid_mean, kid_std = kid.compute()
             
-            wandb.log({'fid': fid_score, 'epoch': e})
+            wandb.log({'fid': fid_score, 'kid_mean': kid_mean, 'kid_std': kid_std, 'epoch': e})
             pbar.set_description(f'FID score at epoch {e}: {fid_score}')
 
 

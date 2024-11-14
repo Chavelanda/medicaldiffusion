@@ -181,7 +181,6 @@ class Trainer(object):
         video_tensor_to_gif(one_gif, video_path)
 
         # LOG gif to wandb
-        # Check if using wandb logger
         log = {'gif': wandb.Video(video_path)}
 
         # Save milestone

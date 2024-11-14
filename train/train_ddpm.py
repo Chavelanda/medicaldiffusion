@@ -34,10 +34,12 @@ def train(rank, world_size, cfg: DictConfig):
     # Setip distributed training
     setup(rank, world_size)
 
-    # Update results folder
+    # Update results folder and update learning rate based on world size
     with open_dict(cfg):
-        cfg.model.results_folder = os.path.join(
-            cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
+        cfg.model.results_folder = os.path.join(cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
+        base_lr = cfg.model.train_lr
+        cfg.model.train_lr = base_lr * world_size
+        print(f'World size is {world_size}. LR updated from {base_lr} to {cfg.model.train_lr}')
 
     # Init wandb only in first process
     if rank == 0:

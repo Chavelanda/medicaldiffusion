@@ -76,7 +76,6 @@ def train(rank, world_size, cfg: DictConfig):
         timesteps=cfg.model.timesteps,
         # sampling_timesteps=cfg.model.sampling_timesteps,
         loss_type=cfg.model.loss_type,
-        # objective=cfg.objective
     ).to(rank)
 
     ddp_diffusion = myDDP(diffusion, device_ids=[rank], find_unused_parameters=True)

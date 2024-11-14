@@ -11,7 +11,6 @@ load_milestone:
 
 batch_size: 1
 num_workers: 32
-objective: pred_x0
 validate_save_and_sample_every: 10000
 train_lr: 1e-4
 timesteps: 300 # number of steps
@@ -21,8 +20,8 @@ train_num_steps: 5000 # total training steps
 gradient_accumulate_every: 1 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
-num_sample_rows: 1
-n_gpus: 1  # at least 1
+num_sample_rows: 1 # how many images to sample at validation
+n_gpus: 2  # at least 1
 
 cond: True # Conditional training?
 use_class_cond: True # If true, one-hot class labels are embedded and used as conditioning. If false, condition is used as it is.

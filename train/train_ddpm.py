@@ -1,14 +1,14 @@
 import os
-from re import I
-from ddpm import Unet3D, GaussianDiffusion, Trainer
-import torch
+
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
-from dataset.get_dataset import get_dataset
-
 import wandb
 
-# NCCL_P2P_DISABLE=1 accelerate launch train/train_ddpm.py
+import torch
+
+from dataset.get_dataset import get_dataset
+from ddpm import Unet3D, GaussianDiffusion, Trainer
+
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
@@ -56,18 +56,17 @@ def run(cfg: DictConfig):
 
     trainer = Trainer(
         diffusion,
-        cfg=cfg,
         dataset=train_dataset,
         val_dataset=val_dataset,
+        ema_decay=cfg.model.ema_decay,
         train_batch_size=cfg.model.batch_size,
-        validate_save_and_sample_every=cfg.model.validate_save_and_sample_every,
         train_lr=cfg.model.train_lr,
         train_num_steps=cfg.model.train_num_steps,
         gradient_accumulate_every=cfg.model.gradient_accumulate_every,
-        ema_decay=cfg.model.ema_decay,
         amp=cfg.model.amp,
-        num_sample_rows=cfg.model.num_sample_rows,
+        validate_save_and_sample_every=cfg.model.validate_save_and_sample_every,
         results_folder=cfg.model.results_folder,
+        num_sample_rows=cfg.model.num_sample_rows,
         num_workers=cfg.model.num_workers,
         conditioned=cfg.model.cond,
     )

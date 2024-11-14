@@ -3,6 +3,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from tqdm import tqdm
 import wandb
 from pathlib import Path
 from torch.optim import Adam
@@ -37,6 +38,7 @@ class Trainer(object):
         max_grad_norm=None,
         num_workers=20,
         conditioned=False,
+        rank=0,
     ):
         super().__init__()
         self.model = diffusion_model
@@ -63,8 +65,7 @@ class Trainer(object):
         self.len_dataloader = len(dl)
         self.dl = cycle(dl)
 
-        assert len(
-            self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
+        assert len(self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
 
         self.opt = Adam(diffusion_model.parameters(), lr=train_lr)
 
@@ -79,6 +80,8 @@ class Trainer(object):
         self.results_folder.mkdir(exist_ok=True, parents=True)
 
         self.conditioned = conditioned
+
+        self.rank = rank
 
         self.reset_parameters()
 
@@ -175,7 +178,7 @@ class Trainer(object):
         one_gif = rearrange(
             all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i=self.num_sample_rows)
         video_path = str(self.results_folder / str(f'{milestone}.gif'))
-        images = video_tensor_to_gif(one_gif, video_path)
+        video_tensor_to_gif(one_gif, video_path)
 
         # LOG gif to wandb
         # Check if using wandb logger
@@ -211,15 +214,18 @@ class Trainer(object):
     ):
         assert callable(log_fn)
 
+        if self.rank == 0:
+            pbar = tqdm(total=self.train_num_steps)
+        
         while self.step < self.train_num_steps:
             log = self.training_step(prob_focus_present, focus_present_mask)
 
-            # Update EMA model when needed
-            if self.step % self.update_ema_every == 0:
+            # Update EMA model when needed (only for rank 0)
+            if self.rank == 0 and self.step % self.update_ema_every == 0:
                 self.step_ema()
 
-            # Validation step
-            if self.step != 0 and self.step % self.validate_save_and_sample_every == 0:
+            # Validation step (only for rank 0)
+            if self.rank == 0 and self.step != 0 and self.step % self.validate_save_and_sample_every == 0:
                 val_log = self.validation_step(prob_focus_present, focus_present_mask)
                 log = {**log, **val_log}
 
@@ -229,5 +235,11 @@ class Trainer(object):
             log_fn(log)
             
             self.step += 1
+
+            if self.rank == 0 and self.step % 100 == 0:
+                pbar.update(100)
+        
+        if self.rank == 0:
+            pbar.close()
 
         print('training completed')

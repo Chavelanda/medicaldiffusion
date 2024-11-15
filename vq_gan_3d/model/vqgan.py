@@ -536,7 +536,7 @@ class NLayerDiscriminator(nn.Module):
                 res.append(model(res[-1]))
             return res[-1], res[1:]
         else:
-            return self.model(input), _
+            return self.model(input), None
 
 
 class NLayerDiscriminator3D(nn.Module):
@@ -590,4 +590,4 @@ class NLayerDiscriminator3D(nn.Module):
                 res.append(model(res[-1]))
             return res[-1], res[1:]
         else:
-            return self.model(input), _
+            return self.model(input), None

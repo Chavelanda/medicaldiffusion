@@ -44,6 +44,41 @@ def vanilla_d_loss(logits_real, logits_fake):
     return d_loss
 
 
+def pad_to_multiple(x, divisors=(4, 4, 4)):
+    """
+    Pads a 3D input tensor along its last three spatial dimensions to make them divisible
+    by the given divisors. Ensures symmetric padding where possible.
+    
+    Args:
+        x (torch.Tensor): 3D input tensor of shape (..., D, H, W).
+        divisors (tuple): A tuple of 3 integers specifying the divisors for the depth, height, and width.
+    
+    Returns:
+        tuple: (padded_tensor, padding_sizes)
+            - padded_tensor (torch.Tensor): Padded tensor.
+            - padding_sizes (tuple): Tuple of 3 tuples representing the padding applied 
+                                     for each dimension as (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right).
+    """
+    d, h, w = x.shape[-3], x.shape[-2], x.shape[-1]
+    div_d, div_h, div_w = divisors
+
+    # Compute padding for each dimension to make divisible
+    pad_d = (div_d - d % div_d) % div_d
+    pad_h = (div_h - h % div_h) % div_h
+    pad_w = (div_w - w % div_w) % div_w
+
+    # Distribute padding symmetrically, adding extra to the end if necessary
+    pad_front, pad_back = pad_d // 2, pad_d - pad_d // 2
+    pad_top, pad_bottom = pad_h // 2, pad_h - pad_h // 2
+    pad_left, pad_right = pad_w // 2, pad_w - pad_w // 2
+
+    # Apply padding using F.pad
+    padded_x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom, pad_front, pad_back))
+    
+    # Return padded tensor and the padding sizes
+    return padded_x, ((pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right))
+
+
 class VQGAN(pl.LightningModule):
     def __init__(self, cfg):
         super().__init__()
@@ -110,6 +145,9 @@ class VQGAN(pl.LightningModule):
         return self.decoder(h)
 
     def forward(self, x, optimizer_idx=None, name='train'):
+        # Pad image so that it is divisible by downsampling scale
+        x, _ = pad_to_multiple(x, self.cfg.model.downsample)
+
         B, C, T, H, W = x.shape
 
         losses = {}
@@ -273,48 +311,6 @@ class VQGAN(pl.LightningModule):
                                     list(self.video_discriminator.parameters()),
                                     lr=lr, betas=(0.5, 0.9))
         return opt_ae, opt_disc
-    
-    # def log_optim_0(self, vq_output, recon_loss, perceptual_loss, g_image_loss, g_video_loss, aeloss, image_gan_feat_loss, video_gan_feat_loss):
-    #     logs = {'train/g_image_loss': g_image_loss, 'train/g_video_loss': g_video_loss, 
-    #             'train/image_gan_feat_loss': image_gan_feat_loss, 
-    #             'train/video_gan_feat_loss': video_gan_feat_loss, 
-    #             'train/perceptual_loss': perceptual_loss, 'train/recon_loss': recon_loss, 
-    #             'train/aeloss': aeloss, 'train/commitment_loss': vq_output['commitment_loss'], 
-    #             'train/perplexity': vq_output['perplexity'], 'trainer/global_step': self.global_step}
-    #     self.log_dict(logs, prog_bar=True, on_step=True, on_epoch=True)
-    #     wandb.log(logs)
-        
-        
-    # def log_optim_1(self, logits_image_fake, logits_video_fake, logits_image_real, logits_video_real, d_image_loss, d_video_loss, discloss):
-    #     logs = {'train/logits_image_real': logits_image_real.mean().detach(), 
-    #             'train/logits_image_fake': logits_image_fake.mean().detach(), 
-    #             'train/logits_video_real': logits_video_real.mean().detach(), 
-    #             'train/logits_video_fake': logits_video_fake.mean().detach(), 
-    #             'train/d_image_loss': d_image_loss, 'train/d_video_loss': d_video_loss, 
-    #             'train/discloss': discloss, 'trainer/global_step': self.global_step}
-    #     self.log_dict(logs, prog_bar=True, on_step=True, on_epoch=True)
-    #     wandb.log(logs)
-
-    # def log_images(self, batch, **kwargs):
-    #     log = dict()
-    #     x = batch['data']
-    #     x = x.to(self.device)
-    #     frames, frames_rec, _, _ = self(x, log_image=True)
-    #     log["inputs"] = frames
-    #     log["reconstructions"] = frames_rec
-    #     #log['mean_org'] = batch['mean_org']
-    #     #log['std_org'] = batch['std_org']
-    #     return log
-
-    # def log_videos(self, batch, **kwargs):
-    #     log = dict()
-    #     x = batch['data']
-    #     _, _, x, x_rec = self(x, log_image=True)
-    #     log["inputs"] = x
-    #     log["reconstructions"] = x_rec
-    #     #log['mean_org'] = batch['mean_org']
-    #     #log['std_org'] = batch['std_org']
-    #     return log
 
 
 def Normalize(in_channels, norm_type='group', num_groups=32):

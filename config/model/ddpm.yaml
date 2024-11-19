@@ -1,8 +1,9 @@
-vqgan_ckpt: checkpoints/vq_gan_3d/AllCTs/allcts-vqgan-07/best_val-epoch=411-step=149968.ckpt
+vqgan_ckpt: checkpoints/vq_gan_3d/AllCTs/allcts-vqgan-test-256/best_val-epoch=0-step=726.ckpt
 
 # Have to be derived from VQ-GAN Latent space dimensions
-diffusion_img_size: 32
-diffusion_depth_size: 32
+diffusion_d: 29
+diffusion_h: 22
+diffusion_w: 32
 diffusion_num_channels: 8
 dim_mults: 
 results_folder: checkpoints/ddpm
@@ -14,14 +15,14 @@ num_workers: 32
 validate_save_and_sample_every: 10000
 train_lr: 1e-4
 timesteps: 300 # number of steps
-sampling_timesteps: 250 # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
+sampling_timesteps:  # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
 loss_type: l1 # L1 or L2
-train_num_steps: 5000 # total training steps
+train_num_steps: 100001 # total training steps
 gradient_accumulate_every: 1 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
 num_sample_rows: 1 # how many images to sample at validation
-n_gpus: 2  # at least 1
+n_gpus: 1  # at least 1
 
 cond: True # Conditional training?
 use_class_cond: True # If true, one-hot class labels are embedded and used as conditioning. If false, condition is used as it is.

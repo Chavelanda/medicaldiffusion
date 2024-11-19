@@ -31,7 +31,7 @@ class myDDP(torch.nn.parallel.DistributedDataParallel):
 
 
 def train(rank, world_size, cfg: DictConfig):
-    # Setip distributed training
+    # Setup distributed training
     setup(rank, world_size)
 
     # Update results folder and update learning rate based on world size
@@ -49,8 +49,6 @@ def train(rank, world_size, cfg: DictConfig):
 
     train_dataset, val_dataset, _ = get_dataset(cfg)
 
-    # Update lr based on number of GPUs
-
     # Define conditioning parameters
     if cfg.model.cond:
         cond_dim = train_dataset.cond_dim 
@@ -60,7 +58,7 @@ def train(rank, world_size, cfg: DictConfig):
         use_class_cond = False
 
     unet3d = Unet3D(
-            dim=cfg.model.diffusion_img_size,
+            dim=cfg.model.diffusion_w, # It is the channel dimension after init_conv. Why do we use w?
             dim_mults=cfg.model.dim_mults,
             channels=cfg.model.diffusion_num_channels,
             cond_dim=cond_dim,
@@ -70,8 +68,9 @@ def train(rank, world_size, cfg: DictConfig):
     diffusion = GaussianDiffusion(
         unet3d,
         vqgan_ckpt=cfg.model.vqgan_ckpt,
-        image_size=cfg.model.diffusion_img_size,
-        num_frames=cfg.model.diffusion_depth_size,
+        d=cfg.model.diffusion_d,
+        h=cfg.model.diffusion_h,
+        w=cfg.model.diffusion_w,
         channels=cfg.model.diffusion_num_channels,
         timesteps=cfg.model.timesteps,
         # sampling_timesteps=cfg.model.sampling_timesteps,

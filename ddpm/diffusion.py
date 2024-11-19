@@ -39,8 +39,9 @@ class GaussianDiffusion(nn.Module):
         self,
         denoise_fn,
         *,
-        image_size,
-        num_frames,
+        d,
+        h,
+        w,
         text_use_bert_cls=False,
         channels=3,
         timesteps=1000,
@@ -51,8 +52,11 @@ class GaussianDiffusion(nn.Module):
     ):
         super().__init__()
         self.channels = channels
-        self.image_size = image_size
-        self.num_frames = num_frames
+        
+        self.d = d
+        self.h = h
+        self.w = w
+
         self.denoise_fn = denoise_fn
 
         if vqgan_ckpt:
@@ -194,11 +198,7 @@ class GaussianDiffusion(nn.Module):
             cond = bert_embed(tokenize(cond)).to(device)
 
         batch_size = cond.shape[0] if exists(cond) else batch_size
-        image_size = self.image_size
-        channels = self.channels
-        num_frames = self.num_frames
-        _sample = self.p_sample_loop(
-            (batch_size, channels, num_frames, image_size, image_size), cond=cond, cond_scale=cond_scale)
+        _sample = self.p_sample_loop((batch_size, self.channels, self.d, self.h, self.w), cond=cond, cond_scale=cond_scale)
 
         if isinstance(self.vqgan, VQGAN):
             # denormalize TODO: Remove eventually
@@ -216,7 +216,7 @@ class GaussianDiffusion(nn.Module):
         # Initialize noisy image
         batch_size = cond.shape[0] if exists(cond) else batch_size
         device = self.betas.device
-        x = torch.randn((batch_size, self.channels, self.num_frames, self.image_size, self.image_size), device=device)
+        x = torch.randn((batch_size, self.channels, self.d, self.h, self.w), device=device)
 
         # shifted sequence of t, list of pred x0 and list of noisy images
         seq_next = [-1] + list(seq[:-1])
@@ -313,9 +313,10 @@ class GaussianDiffusion(nn.Module):
             print("Hi")
             x = normalize_img(x)
 
-        b, device, img_size, = x.shape[0], x.device, self.image_size
-        check_shape(x, 'b c f h w', c=self.channels,
-                    f=self.num_frames, h=img_size, w=img_size)
+        b, device, = x.shape[0], x.device
+        
+        check_shape(x, 'b c f h w', c=self.channels, f=self.d, h=self.h, w=self.w)
+
         t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
 
         return self.p_losses(x, t, *args, **kwargs)

@@ -50,7 +50,6 @@ class Trainer(object):
         self.validate_save_and_sample_every = validate_save_and_sample_every
 
         self.batch_size = train_batch_size
-        self.image_size = diffusion_model.image_size
         self.gradient_accumulate_every = gradient_accumulate_every
         self.train_num_steps = train_num_steps
         
@@ -157,16 +156,19 @@ class Trainer(object):
     def validation_step(self, prob_focus_present, focus_present_mask):
         self.ema_model.eval()
 
+        # Get milestone number
+        milestone = self.step // self.validate_save_and_sample_every
+
+        # Save milestone
+        self.save(milestone)
+
         # Sample
         with torch.no_grad():
-            # Get milestone number
-            milestone = self.step // self.validate_save_and_sample_every
-            
             # Get number of samples and their condition
             num_samples = self.num_sample_rows ** 2
             batches = num_to_groups(num_samples, self.batch_size)
             sample_cond = self.ds.get_cond(batch_size=batches[-1]).cuda() if self.conditioned else None
-            print(f'Sampling {num_samples} images with condtion {sample_cond}')
+            print(f'Sampling {num_samples} images with condition {sample_cond}')
 
             # Sample the images
             all_videos_list = list(
@@ -182,9 +184,6 @@ class Trainer(object):
 
         # LOG gif to wandb
         log = {'gif': wandb.Video(video_path)}
-
-        # Save milestone
-        self.save(milestone)
 
         # Validate
         with torch.no_grad():

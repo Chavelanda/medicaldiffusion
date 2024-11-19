@@ -112,3 +112,68 @@ def cast_num_frames(t, *, frames):
         return t[:, :frames]
 
     return F.pad(t, (0, 0, 0, 0, 0, frames - f))
+
+
+def pad_to_multiple(x, divisors=(4, 4, 4)):
+    """
+    Pads a 3D input tensor along its last three spatial dimensions to make them divisible
+    by the given divisors. Ensures symmetric padding where possible.
+    
+    Args:
+        x (torch.Tensor): 3D input tensor of shape (..., D, H, W).
+        divisors (tuple): A tuple of 3 integers specifying the divisors for the depth, height, and width.
+    
+    Returns:
+        tuple: (padded_tensor, padding_sizes)
+            - padded_tensor (torch.Tensor): Padded tensor.
+            - padding_sizes (tuple): Tuple of 3 tuples representing the padding applied 
+                                     for each dimension as (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right).
+    """
+    d, h, w = x.shape[-3], x.shape[-2], x.shape[-1]
+    div_d, div_h, div_w = divisors
+
+    # Compute padding for each dimension to make divisible
+    pad_d = (div_d - d % div_d) % div_d
+    pad_h = (div_h - h % div_h) % div_h
+    pad_w = (div_w - w % div_w) % div_w
+
+    # Distribute padding symmetrically, adding extra to the end if necessary
+    pad_front, pad_back = pad_d // 2, pad_d - pad_d // 2
+    pad_top, pad_bottom = pad_h // 2, pad_h - pad_h // 2
+    pad_left, pad_right = pad_w // 2, pad_w - pad_w // 2
+
+    # Apply padding using F.pad
+    padded_x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom, pad_front, pad_back))
+    
+    # Return padded tensor and the padding sizes
+    return padded_x, ((pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right))
+
+
+def crop_to_original(x, padding_sizes):
+    """
+    Crops a padded 3D tensor back to its original size based on the padding_sizes.
+    
+    Args:
+        x (torch.Tensor): The padded 3D tensor of shape (..., D, H, W).
+        padding_sizes (tuple): A tuple of 3 tuples representing the padding applied
+                               for each dimension as (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right).
+    
+    Returns:
+        torch.Tensor: Cropped tensor with the original size before padding.
+    """
+    (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right) = padding_sizes
+    
+    # Compute the cropping indices
+    d_start = pad_front
+    d_end = -pad_back if pad_back > 0 else None
+    
+    h_start = pad_top
+    h_end = -pad_bottom if pad_bottom > 0 else None
+    
+    w_start = pad_left
+    w_end = -pad_right if pad_right > 0 else None
+    
+    # Crop the tensor using slicing
+    cropped_x = x[..., d_start:d_end, h_start:h_end, w_start:w_end]
+    
+    return cropped_x

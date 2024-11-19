@@ -79,6 +79,36 @@ def pad_to_multiple(x, divisors=(4, 4, 4)):
     return padded_x, ((pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right))
 
 
+def crop_to_original(x, padding_sizes):
+    """
+    Crops a padded 3D tensor back to its original size based on the padding_sizes.
+    
+    Args:
+        x (torch.Tensor): The padded 3D tensor of shape (..., D, H, W).
+        padding_sizes (tuple): A tuple of 3 tuples representing the padding applied
+                               for each dimension as (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right).
+    
+    Returns:
+        torch.Tensor: Cropped tensor with the original size before padding.
+    """
+    (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right) = padding_sizes
+    
+    # Compute the cropping indices
+    d_start = pad_front
+    d_end = -pad_back if pad_back > 0 else None
+    
+    h_start = pad_top
+    h_end = -pad_bottom if pad_bottom > 0 else None
+    
+    w_start = pad_left
+    w_end = -pad_right if pad_right > 0 else None
+    
+    # Crop the tensor using slicing
+    cropped_x = x[..., d_start:d_end, h_start:h_end, w_start:w_end]
+    
+    return cropped_x
+
+
 class VQGAN(pl.LightningModule):
     def __init__(self, cfg):
         super().__init__()
@@ -99,6 +129,10 @@ class VQGAN(pl.LightningModule):
 
         self.codebook = Codebook(cfg.model.n_codes, cfg.model.embedding_dim,
                                  no_random_restart=cfg.model.no_random_restart, restart_thres=cfg.model.restart_thres)
+        
+        # init padding
+        img_size = (cfg.dataset.d, cfg.dataset.h, cfg.dataset.w)
+        _, self.padding_sizes = pad_to_multiple(torch.rand(img_size), self.cfg.model.downsample)
 
         self.gan_feat_weight = cfg.model.gan_feat_weight
         # TODO: Changed batchnorm from sync to normal
@@ -127,6 +161,8 @@ class VQGAN(pl.LightningModule):
         
 
     def encode(self, x, include_embeddings=False, quantize=True):
+        x, _ = pad_to_multiple(x, self.cfg.model.downsample)
+
         h = self.pre_vq_conv(self.encoder(x))
         if quantize:
             vq_output = self.codebook(h)
@@ -142,11 +178,13 @@ class VQGAN(pl.LightningModule):
             latent = vq_output['encodings']
         h = F.embedding(latent, self.codebook.embeddings)
         h = self.post_vq_conv(shift_dim(h, -1, 1))
-        return self.decoder(h)
+        h = self.decoder(h)
+        h = crop_to_original(h, self.padding_sizes)
+        return h
 
     def forward(self, x, optimizer_idx=None, name='train'):
         # Pad image so that it is divisible by downsampling scale
-        x, _ = pad_to_multiple(x, self.cfg.model.downsample)
+        x, padding_sizes = pad_to_multiple(x, self.cfg.model.downsample)
 
         B, C, T, H, W = x.shape
 
@@ -156,7 +194,7 @@ class VQGAN(pl.LightningModule):
         vq_output = self.codebook(z)
         x_recon = self.decoder(self.post_vq_conv(vq_output['embeddings']))
 
-        if name=='test': return x_recon
+        if name=='test': return crop_to_original(x_recon, padding_sizes)
 
         # VQ-VAE losses
         losses[f'{name}/perplexity'] = vq_output['perplexity']

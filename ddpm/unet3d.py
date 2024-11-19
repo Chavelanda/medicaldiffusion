@@ -11,7 +11,7 @@ from einops_exts import rearrange_many
 
 from rotary_embedding_torch import RotaryEmbedding
 
-from ddpm.utils import exists, default, is_odd, prob_mask_like
+from ddpm.utils import exists, default, is_odd, prob_mask_like, pad_to_multiple, crop_to_original
 from ddpm.text import BERT_MODEL_DIM
 
 
@@ -344,6 +344,7 @@ class Unet3D(nn.Module):
         dim_mults = default(dim_mults, (1, 2, 4, 8))
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
+        self.pad_divisors = (len(dim_mults), len(dim_mults), len(dim_mults))
 
         # time conditioning
 
@@ -459,6 +460,9 @@ class Unet3D(nn.Module):
                     ), 'cond must be passed in if cond_dim specified'
         batch, device = x.shape[0], x.device
 
+        # pad to make downsizeable
+        x, padding_sizes = pad_to_multiple(x, self.pad_divisors)
+
         focus_present_mask = default(focus_present_mask, lambda: prob_mask_like(
             (batch,), prob_focus_present, device=device))
 
@@ -513,4 +517,9 @@ class Unet3D(nn.Module):
             x = upsample(x)
 
         x = torch.cat((x, r), dim=1)
-        return self.final_conv(x)
+        x = self.final_conv(x)
+        
+        # crop to initial shape
+        x = crop_to_original(x, padding_sizes)
+
+        return x

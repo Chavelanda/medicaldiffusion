@@ -143,8 +143,7 @@ class GaussianDiffusion(nn.Module):
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(self, x, t, clip_denoised: bool, cond=None, cond_scale=1.):
-        x_recon = self.predict_start_from_noise(
-            x, t=t, noise=self.denoise_fn.forward_with_cond_scale(x, t, cond=cond, cond_scale=cond_scale))
+        x_recon = self.predict_start_from_noise(x, t=t, noise=self.denoise_fn.forward_with_cond_scale(x, t, cond=cond, cond_scale=cond_scale))
 
         if clip_denoised:
             s = 1.
@@ -172,8 +171,7 @@ class GaussianDiffusion(nn.Module):
             x=x, t=t, clip_denoised=clip_denoised, cond=cond, cond_scale=cond_scale)
         noise = torch.randn_like(x)
         # no noise when t == 0
-        nonzero_mask = (1 - (t == 0).float()).reshape(b,
-                                                      *((1,) * (len(x.shape) - 1)))
+        nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
     @torch.inference_mode()
@@ -184,8 +182,7 @@ class GaussianDiffusion(nn.Module):
         img = torch.randn(shape, device=device)
 
         for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps, disable=True):
-            img = self.p_sample(img, torch.full(
-                (b,), i, device=device, dtype=torch.long), cond=cond, cond_scale=cond_scale)
+            img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long), cond=cond, cond_scale=cond_scale)
 
         return img
 
@@ -213,6 +210,47 @@ class GaussianDiffusion(nn.Module):
             unnormalize_img(_sample)
 
         return _sample
+    
+    @torch.inference_mode()
+    def ddim_sample(self, cond=None, cond_scale=1., batch_size=16, seq=[], eta=0):
+        # Initialize noisy image
+        batch_size = cond.shape[0] if exists(cond) else batch_size
+        device = self.betas.device
+        x = torch.randn((batch_size, self.channels, self.num_frames, self.image_size, self.image_size), device=device)
+
+        # shifted sequence of t, list of pred x0 and list of noisy images
+        seq_next = [-1] + list(seq[:-1])
+        x0_preds = []
+        xs = [x]
+
+        # sample loop
+        for i, j in zip(reversed(seq), reversed(seq_next)):
+            t = torch.full((batch_size,), i, device=device, dtype=torch.long)
+            next_t = torch.full((batch_size,), j, device=device, dtype=torch.long)
+
+            xt = xs[-1].to(device)
+
+            noise = self.denoise_fn.forward_with_cond_scale(xt, t, cond=cond, cond_scale=cond_scale)
+
+            x0_t = self.predict_start_from_noise(xt, t, noise)
+            x0_preds.append(x0_t.to('cpu'))
+
+            at = extract(self.alphas_cumprod, t, xt.shape)
+
+            # TODO: Handle better
+            # Handle next_t = -1 case. 
+            if j == -1:
+                # Directly set the final xt_next to at.sqrt() * x0_t without noise
+                xt_next = at.sqrt() * x0_t
+            else:
+                at_next = extract(self.alphas_cumprod, next_t, xt.shape)
+                c1 = (eta * torch.sqrt((1 - at / at_next) * (1 - at_next) / (1 - at)))
+                c2 = torch.sqrt((1 - at_next) - c1 ** 2)
+                xt_next = at_next.sqrt() * x0_t + c1 * torch.randn_like(x) + c2 * noise
+                xs.append(xt_next.to('cpu'))
+        
+        return xs[-1]
+
 
     @torch.inference_mode()
     def interpolate(self, x1, x2, t=None, lam=0.5):

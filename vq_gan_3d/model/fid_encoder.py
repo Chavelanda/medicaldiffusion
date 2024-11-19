@@ -9,6 +9,7 @@ class FIDEncoder(nn.Module):
         super(FIDEncoder, self).__init__()
         self.ae = VQGAN.load_from_checkpoint(ckpt)
         self.pooling = nn.AdaptiveAvgPool3d(8)
+        self.num_features = 4096
 
     def forward(self, input):
         

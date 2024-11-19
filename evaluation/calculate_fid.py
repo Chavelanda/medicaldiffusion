@@ -31,11 +31,11 @@ def run(cfg: DictConfig):
 
     extractor.to(device)
 
-    fid = FrechetInceptionDistance(feature=extractor, normalize=True, compute_on_cpu=True, input_img_size=(cfg.dataset.image_channels, dataset_real.d, dataset_real.h, dataset_real.w))
-    fid.reset()
+    input_img_size = (cfg.dataset.image_channels, dataset_real.d, dataset_real.h, dataset_real.w)    
 
-    kid = KernelInceptionDistance(feature=extractor, compute_on_cpu=True, subset_size=len(dataset_gen))
-    kid.reset()
+    fid = FrechetInceptionDistance(feature=extractor, normalize=True, compute_on_cpu=True, input_img_size=input_img_size).to(device)
+
+    kid = KernelInceptionDistance(feature=extractor, compute_on_cpu=True, subsets=150, subset_size=min(len(dataset_gen), 500)).to(device)
 
     epochs = cfg.model.epochs
 
@@ -45,23 +45,23 @@ def run(cfg: DictConfig):
         for e in pbar:
             for batch in tqdm(dl_real, leave=True):
                 # Update FID with real features
-                batch = batch['data'].to(device)        
+                batch = batch['data'].to(device)       
                 fid.update(batch, real=True)
                 kid.update(batch, real=True)
 
             for batch in tqdm(dl_gen, leave=True):
                 # Update FID with gen features
-                batch = batch['data'].to(device)#.to(torch.float64)
+                batch = batch['data'].to(device)
                 fid.update(batch, real=False)
                 kid.update(batch, real=False)
-
 
             # Compute FID
             fid_score = fid.compute()
             kid_mean, kid_std = kid.compute()
             
             wandb.log({'fid': fid_score, 'kid_mean': kid_mean, 'kid_std': kid_std, 'epoch': e})
-            pbar.set_description(f'FID score at epoch {e}: {fid_score}')
+
+    print('Computation ended!')
 
 
 if __name__ == '__main__':

@@ -317,6 +317,12 @@ class VQGAN(pl.LightningModule):
             opt_disc.step()
             
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
+    
+
+    def on_train_epoch_end(self):
+        scheduler = self.lr_schedulers()
+        scheduler.step()
+
 
     def validation_step(self, batch, batch_idx):
         x = batch['data'] 
@@ -348,7 +354,12 @@ class VQGAN(pl.LightningModule):
         opt_disc = torch.optim.Adam(list(self.image_discriminator.parameters()) +
                                     list(self.video_discriminator.parameters()),
                                     lr=lr, betas=(0.5, 0.9))
-        return opt_ae, opt_disc
+        
+        # compute start factor to begin with base_lr
+        start_factor = self.cfg.model.base_lr/lr
+        ae_scheduler = torch.optim.lr_scheduler.LinearLR(opt_ae, start_factor=start_factor, total_iters=5)
+        
+        return [opt_ae, opt_disc], [ae_scheduler] 
 
 
 def Normalize(in_channels, norm_type='group', num_groups=32):

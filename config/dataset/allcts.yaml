@@ -1,6 +1,6 @@
 name: AllCTs
 root_dir: data/allcts-051-256
-resize: 2
+resample: 1.19
 image_channels: 1
 binarize: True
 rescale: True # If True, rescale to [-1,1]. If False, stays in range [0,1]
@@ -17,7 +17,7 @@ val_split: test
 # To be specified only when reconstructing images with autoencoder
 save_path: data/test 
 
-# To be specified for FID KID evaluation
-d: 114
-h: 88
-w: 128
+# To be specified for FID KID evaluation and VQVAE
+d: 192
+h: 148
+w: 216

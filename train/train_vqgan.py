@@ -59,7 +59,7 @@ def run(cfg: DictConfig):
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
     
     # progress bar callback
-    callbacks.append(TQDMProgressBar(refresh_rate=50, leave=True))
+    callbacks.append(TQDMProgressBar(refresh_rate=50))
 
     # load the most recent checkpoint file
     ckpt_path = None

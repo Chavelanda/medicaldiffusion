@@ -13,7 +13,7 @@ import matplotlib.image
 
 class AllCTsDataset(Dataset):
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', qs=None, 
-                binarize=False, rescale=True, resize=1, conditioned=True, metadata_name='metadata.csv'):
+                binarize=False, rescale=True, resample=1, conditioned=True, metadata_name='metadata.csv'):
         
         assert split in ['all', 'train', 'val', 'test', 'train-val'], 'Invalid split: {}'.format(split)
 
@@ -40,13 +40,13 @@ class AllCTsDataset(Dataset):
         img, _ = nrrd.read(f'{self.root_dir}/{self.df["name"].iloc[0]}.nrrd')
         d, h, w = img.shape
       
-        self.resize = resize
+        self.resample = resample
 
-        # Update sizes based on resize
-        self.d, self.h, self.w, = d//self.resize, h//self.resize, w//self.resize
+        # Update sizes based on resample
+        self.d, self.h, self.w, = d//self.resample, h//self.resample, w//self.resample
 
-        # Resize transform
-        self.resize = tio.Resample(self.resize)
+        # Resample transform
+        self.resample_transform = tio.Resample(self.resample)
 
         # Binarize
         self.binarize = binarize
@@ -71,15 +71,15 @@ class AllCTsDataset(Dataset):
         img, _ = nrrd.read(path)
         img = torch.from_numpy(img)
 
+        img = img.unsqueeze(0).float()
+        img = self.resample_transform(img)
+
         if self.binarize:
             img = (img > 0.5).float()
 
         if self.rescale:
             #  min-max normalized to the range between -1 and 1
             img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
-
-        img = img.unsqueeze(0).float()
-        img = self.resize(img)
 
         if self.conditioned:
             quality_items = entry[entry.index.str.startswith('quality')]
@@ -149,13 +149,34 @@ class AllCTsDataset(Dataset):
         
         nrrd.write(save_path, item)
 
+
+class AllCts_MSSSIM(AllCTsDataset):
+
+    def __init__(self, root_dir, split, resample=1, binarize=False, rescale=True, samples=1000, metadata_name='metadata.csv'):
+        super().__init__(root_dir=root_dir, split=split, resample=resample, binarize=binarize, rescale=rescale, conditioned=False, metadata_name=metadata_name)
+
+        self.samples = samples
+
+    def __len__(self):
+        return self.samples
+
+    def __getitem__(self, index):
+        index1 = np.random.randint(len(self.df))
+        index2 = np.random.randint(len(self.df))
+
+        img1 = super().__getitem__(index1)['data']
+        img2 = super().__getitem__(index2)['data']
+
+        return img1, img2
+
+
 class AllCTsDatasetSS(AllCTsDataset):
     
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', binarize=False, rescale=True,
-                 resize=1, metadata_name='metadata.csv',
+                 resample=1, metadata_name='metadata.csv',
                  recon_root_dir=None, recon_metadata_name='metadata.csv'):
         
-        super().__init__(root_dir=root_dir, split=split, binarize=binarize, rescale=rescale, resize=resize, metadata_name=metadata_name)
+        super().__init__(root_dir=root_dir, split=split, binarize=binarize, rescale=rescale, resample=resample, metadata_name=metadata_name)
 
         # Define transforms
         self.transforms = tio.Compose([
@@ -167,7 +188,7 @@ class AllCTsDatasetSS(AllCTsDataset):
         # Prepare recon data
         if recon_root_dir is not None:
             self.recon_root_dir = recon_root_dir
-            recon_dataset = AllCTsDataset(recon_root_dir, metadata_name=recon_metadata_name, split=split, binarize=binarize, resize_d=resize_d, resize_h=resize_h, resize_w=resize_w)
+            recon_dataset = AllCTsDataset(recon_root_dir, metadata_name=recon_metadata_name, split=split, binarize=binarize, resample=resample)
             self.recon_df = recon_dataset.df
             self.p_a = 1 # Probability to load the reconstructed image
             self.p_b = 0 # Probability to flip the image
@@ -185,6 +206,9 @@ class AllCTsDatasetSS(AllCTsDataset):
         img, _ = nrrd.read(path)
         img = torch.from_numpy(img)
 
+        img = img.unsqueeze(0).float()
+        img = self.resample_transform(img)
+
         if self.binarize:
             img = (img > 0.5).float()
 
@@ -192,18 +216,15 @@ class AllCTsDatasetSS(AllCTsDataset):
             #  min-max normalized to the range between -1 and 1
             img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
 
-        img = img.unsqueeze(0).float()
-        img = self.resize(img)
-
         if np.random.rand() < self.p_a:       
             # Load and process as for normal image the reconstructed one
             recon_entry = self.recon_df.iloc[index]
             recon_path = os.path.join(self.recon_root_dir, recon_entry['name'] + '.nrrd')
             second_img = torch.from_numpy(nrrd.read(recon_path)[0])
-            second_img = (second_img - second_img.min()) / (second_img.max() - second_img.min()) * 2 - 1
+            second_img = self.resample_transform(second_img.unsqueeze(0).float())
             if self.binarize:
-                second_img = (second_img > 0.).float()
-            second_img = self.resize(second_img.unsqueeze(0).float())
+                second_img = (second_img > 0.5).float()
+            second_img = (second_img - second_img.min()) / (second_img.max() - second_img.min()) * 2 - 1
             
             # Possibly flip the image
             if np.random.rand() < self.p_b:
@@ -224,7 +245,7 @@ if __name__ == '__main__':
     # matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
     # print('fooed')
 
-    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='train-val', resize=1, qs=[2,3,4,5,6], rescale=False)
+    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='train-val', resample=1, qs=[2,3,4,5,6], rescale=False)
     print(len(dataset))
     img = dataset.__getitem__(10)['data']
 

@@ -5,6 +5,7 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 import wandb
 
 import torch
+from torch.utils.data import DataLoader, DistributedSampler
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -34,12 +35,22 @@ def train(rank, world_size, cfg: DictConfig):
     # Setup distributed training
     setup(rank, world_size)
 
-    # Update results folder and update learning rate based on world size
+    results_folder = os.path.join(cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
+    print("Setting results_folder to {}".format(results_folder))
+
+    # automatically adjust learning rate following https://arxiv.org/abs/1706.02677
+    batch_rate = world_size*cfg.model.gradient_accumulate_every
+    actual_batch_size = cfg.model.batch_size*batch_rate
+    actual_lr = cfg.model.train_lr*batch_rate
+    print(f'Batch size is {cfg.model.batch_size}\tActual batch size is {actual_batch_size}')
+    print(f'Learning rate is {cfg.model.train_lr}\tActual learning rate is {actual_lr}')
+
     with open_dict(cfg):
-        cfg.model.results_folder = os.path.join(cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
-        base_lr = cfg.model.train_lr
-        cfg.model.train_lr = base_lr * world_size
-        print(f'World size is {world_size}. LR updated from {base_lr} to {cfg.model.train_lr}')
+        cfg.model.actual_batch_size = actual_batch_size
+        cfg.model.base_lr = cfg.model.train_lr
+        cfg.model.train_lr = actual_lr
+
+        cfg.model.results_folder = results_folder
 
     # Init wandb only in first process
     if rank == 0:
@@ -48,6 +59,11 @@ def train(rank, world_size, cfg: DictConfig):
         wandb.config.update(OmegaConf.to_container(cfg.model))
 
     train_dataset, val_dataset, _ = get_dataset(cfg)
+
+    # Define dataloaders
+    sampler = DistributedSampler(train_dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank())
+    dl = DataLoader(train_dataset, batch_size=cfg.model.batch_size, pin_memory=True, num_workers=cfg.model.num_workers, sampler=sampler)
+    val_dl = DataLoader(val_dataset, batch_size=cfg.model.batch_size, shuffle=False, pin_memory=True, num_workers=cfg.model.num_workers)
 
     # Define conditioning parameters
     if cfg.model.cond:
@@ -58,7 +74,7 @@ def train(rank, world_size, cfg: DictConfig):
         use_class_cond = False
 
     unet3d = Unet3D(
-            dim=cfg.model.diffusion_w, # It is the channel dimension after init_conv. Why do we use w?
+            dim=cfg.model.dim, # It is the channel dimension after init_conv. Why do we use w?
             dim_mults=cfg.model.dim_mults,
             channels=cfg.model.diffusion_num_channels,
             cond_dim=cond_dim,
@@ -81,10 +97,11 @@ def train(rank, world_size, cfg: DictConfig):
 
     trainer = Trainer(
         ddp_diffusion,
-        dataset=train_dataset,
-        val_dataset=val_dataset,
+        dl=dl,
+        val_dl=val_dl,
         ema_decay=cfg.model.ema_decay,
         train_batch_size=cfg.model.batch_size,
+        base_lr=cfg.model.base_lr,
         train_lr=cfg.model.train_lr,
         train_num_steps=cfg.model.train_num_steps,
         gradient_accumulate_every=cfg.model.gradient_accumulate_every,
@@ -94,7 +111,7 @@ def train(rank, world_size, cfg: DictConfig):
         num_sample_rows=cfg.model.num_sample_rows,
         num_workers=cfg.model.num_workers,
         conditioned=cfg.model.cond,
-        rank=rank
+        rank=rank,
     )
 
     if cfg.model.load_milestone:

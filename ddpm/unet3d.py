@@ -54,8 +54,7 @@ class RelativePositionBias(nn.Module):
         q_pos = torch.arange(n, dtype=torch.long, device=device)
         k_pos = torch.arange(n, dtype=torch.long, device=device)
         rel_pos = rearrange(k_pos, 'j -> 1 j') - rearrange(q_pos, 'i -> i 1')
-        rp_bucket = self._relative_position_bucket(
-            rel_pos, num_buckets=self.num_buckets, max_distance=self.max_distance)
+        rp_bucket = self._relative_position_bucket(rel_pos, num_buckets=self.num_buckets, max_distance=self.max_distance)
         values = self.relative_attention_bias(rp_bucket)
         return rearrange(values, 'i j h -> h i j')
 
@@ -83,13 +82,13 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-
+# lappala
 def Upsample(dim):
-    return nn.ConvTranspose3d(dim, dim, (1, 4, 4), (1, 2, 2), (0, 1, 1))
+    return nn.ConvTranspose3d(dim, dim, (4, 4, 4), (2, 2, 2), (1, 1, 1))
 
-
+# lappala
 def Downsample(dim):
-    return nn.Conv3d(dim, dim, (1, 4, 4), (1, 2, 2), (0, 1, 1))
+    return nn.Conv3d(dim, dim, (4, 4, 4), (2, 2, 2), (1, 1, 1))
 
 
 class LayerNorm(nn.Module):
@@ -120,7 +119,8 @@ class PreNorm(nn.Module):
 class Block(nn.Module):
     def __init__(self, dim, dim_out, groups=8):
         super().__init__()
-        self.proj = nn.Conv3d(dim, dim_out, (1, 3, 3), padding=(0, 1, 1))
+        # lappala
+        self.proj = nn.Conv3d(dim, dim_out, (3, 3, 3), padding=(1, 1, 1))
         self.norm = nn.GroupNorm(groups, dim_out)
         self.act = nn.SiLU()
 
@@ -177,8 +177,7 @@ class SpatialLinearAttention(nn.Module):
         x = rearrange(x, 'b c f h w -> (b f) c h w')
 
         qkv = self.to_qkv(x).chunk(3, dim=1)
-        q, k, v = rearrange_many(
-            qkv, 'b (h c) x y -> b h c (x y)', h=self.heads)
+        q, k, v = rearrange_many(qkv, 'b (h c) x y -> b h c (x y)', h=self.heads)
 
         q = q.softmax(dim=-2)
         k = k.softmax(dim=-1)
@@ -187,8 +186,7 @@ class SpatialLinearAttention(nn.Module):
         context = torch.einsum('b h d n, b h e n -> b h d e', k, v)
 
         out = torch.einsum('b h d e, b h d n -> b h e n', context, q)
-        out = rearrange(out, 'b h c (x y) -> b (h c) x y',
-                        h=self.heads, x=h, y=w)
+        out = rearrange(out, 'b h c (x y) -> b (h c) x y', h=self.heads, x=h, y=w)
         out = self.to_out(out)
         return rearrange(out, '(b f) c h w -> b c f h w', b=b)
 
@@ -325,8 +323,7 @@ class Unet3D(nn.Module):
             dim, heads=attn_heads, dim_head=attn_dim_head, rotary_emb=rotary_emb))
 
         # realistically will not be able to generate that many frames of video... yet
-        self.time_rel_pos_bias = RelativePositionBias(
-            heads=attn_heads, max_distance=32)
+        self.time_rel_pos_bias = RelativePositionBias(heads=attn_heads, max_distance=32)
 
         # initial conv
 
@@ -334,8 +331,8 @@ class Unet3D(nn.Module):
         assert is_odd(init_kernel_size)
 
         init_padding = init_kernel_size // 2
-        self.init_conv = nn.Conv3d(channels, init_dim, (1, init_kernel_size,
-                                   init_kernel_size), padding=(0, init_padding, init_padding))
+        # lappala
+        self.init_conv = nn.Conv3d(channels, init_dim, (init_kernel_size, init_kernel_size, init_kernel_size), padding=(init_padding, init_padding, init_padding))
 
         self.init_temporal_attn = Residual(
             PreNorm(init_dim, temporal_attn(init_dim)))
@@ -460,18 +457,28 @@ class Unet3D(nn.Module):
                     ), 'cond must be passed in if cond_dim specified'
         batch, device = x.shape[0], x.device
 
+        print('\nstart ', x.shape)
+
         # pad to make downsizeable
         x, padding_sizes = pad_to_multiple(x, self.pad_divisors)
+
+        print('\npadding ', x.shape)
 
         focus_present_mask = default(focus_present_mask, lambda: prob_mask_like(
             (batch,), prob_focus_present, device=device))
 
+        # x.shape[2] is the depth. I don't like this
         time_rel_pos_bias = self.time_rel_pos_bias(x.shape[2], device=x.device)
 
         x = self.init_conv(x)
         r = x.clone()
 
+        print('\ninit ', x.shape)
+
+        # temporal attention is referred to the depth of the image, not to time t
         x = self.init_temporal_attn(x, pos_bias=time_rel_pos_bias)
+
+        print('\ntemp ', x.shape)
 
         t = self.time_mlp(time) if exists(self.time_mlp) else None
 
@@ -494,32 +501,40 @@ class Unet3D(nn.Module):
 
         for block1, block2, spatial_attn, temporal_attn, downsample in self.downs:
             x = block1(x, t)
+            print('\nb1 ', x.shape)
             x = block2(x, t)
+            print('\nb2 ', x.shape)
             x = spatial_attn(x)
-            x = temporal_attn(x, pos_bias=time_rel_pos_bias,
-                              focus_present_mask=focus_present_mask)
+            x = temporal_attn(x, pos_bias=time_rel_pos_bias, focus_present_mask=focus_present_mask)
+            print('\nspatial and temporal ', x.shape)
             h.append(x)
             x = downsample(x)
+            print('\ndown ', x.shape)
+            time_rel_pos_bias = self.time_rel_pos_bias(x.shape[2], device=x.device)
 
         x = self.mid_block1(x, t)
         x = self.mid_spatial_attn(x)
-        x = self.mid_temporal_attn(
-            x, pos_bias=time_rel_pos_bias, focus_present_mask=focus_present_mask)
+        x = self.mid_temporal_attn(x, pos_bias=time_rel_pos_bias, focus_present_mask=focus_present_mask)
         x = self.mid_block2(x, t)
+
+        print('\nmid ', x.shape)
 
         for block1, block2, spatial_attn, temporal_attn, upsample in self.ups:
             x = torch.cat((x, h.pop()), dim=1)
             x = block1(x, t)
             x = block2(x, t)
             x = spatial_attn(x)
-            x = temporal_attn(x, pos_bias=time_rel_pos_bias,
-                              focus_present_mask=focus_present_mask)
+            x = temporal_attn(x, pos_bias=time_rel_pos_bias, focus_present_mask=focus_present_mask)
             x = upsample(x)
+            print('\nup ', x.shape)
+            time_rel_pos_bias = self.time_rel_pos_bias(x.shape[2], device=x.device)
 
         x = torch.cat((x, r), dim=1)
         x = self.final_conv(x)
+        print('\nfinal ', x.shape)
         
         # crop to initial shape
         x = crop_to_original(x, padding_sizes)
+        print('\nend ', x.shape)
 
         return x

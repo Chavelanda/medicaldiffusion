@@ -22,10 +22,11 @@ class Trainer(object):
     def __init__(
         self,
         diffusion_model,
-        dataset=None,
-        val_dataset=None,
+        dl=None,
+        val_dl=None,
         ema_decay=0.995,
         train_batch_size=32,
+        base_lr=1e-4,
         train_lr=1e-4,
         train_num_steps=100000,
         gradient_accumulate_every=2,
@@ -53,21 +54,17 @@ class Trainer(object):
         self.gradient_accumulate_every = gradient_accumulate_every
         self.train_num_steps = train_num_steps
         
-        self.ds = dataset
-        self.val_dataset = val_dataset
+        self.ds = dl.dataset
         
-        dl = DataLoader(self.ds, batch_size=train_batch_size,
-                        shuffle=True, pin_memory=True, num_workers=num_workers)
-        self.val_dl = DataLoader(self.val_dataset, batch_size=train_batch_size,
-                                  shuffle=False, pin_memory=True, num_workers=num_workers)
-
         self.len_dataloader = len(dl)
         self.dl = cycle(dl)
 
         assert len(self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
 
         self.opt = Adam(diffusion_model.parameters(), lr=train_lr)
-
+        start_factor = base_lr/train_lr
+        self.scheduler = torch.optim.lr_scheduler.LinearLR(self.opt, start_factor=start_factor, total_iters=5)
+        
         self.step = 0
 
         self.amp = amp
@@ -227,12 +224,16 @@ class Trainer(object):
                 val_log = self.validation_step(prob_focus_present, focus_present_mask)
                 log = {**log, **val_log}
 
-            log = {**log, 'global_step': self.step}
+            log = {**log, 'global_step': self.step, 'lr': self.scheduler.get_last_lr()}
 
             # Log
             log_fn(log)
             
             self.step += 1
+
+            # Update scheduler if epoch is over
+            if self.step % self.len_dataloader == 0:
+                self.scheduler.step()
 
             if self.rank == 0 and self.step % 100 == 0:
                 pbar.update(100)

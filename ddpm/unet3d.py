@@ -82,11 +82,11 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-# lappala
+
 def Upsample(dim):
     return nn.ConvTranspose3d(dim, dim, (4, 4, 4), (2, 2, 2), (1, 1, 1))
 
-# lappala
+
 def Downsample(dim):
     return nn.Conv3d(dim, dim, (4, 4, 4), (2, 2, 2), (1, 1, 1))
 
@@ -119,7 +119,6 @@ class PreNorm(nn.Module):
 class Block(nn.Module):
     def __init__(self, dim, dim_out, groups=8):
         super().__init__()
-        # lappala
         self.proj = nn.Conv3d(dim, dim_out, (3, 3, 3), padding=(1, 1, 1))
         self.norm = nn.GroupNorm(groups, dim_out)
         self.act = nn.SiLU()
@@ -291,6 +290,48 @@ class Attention(nn.Module):
         out = rearrange(out, '... h n d -> ... n (h d)')
         return self.to_out(out)
 
+axis_to_einops = (
+            ('b c d h w', 'b (h w) d c'),
+            ('b c d h w', 'b (d w) h c'),
+            ('b c d h w', 'b (d h) w c') 
+        )
+
+class OneDimAttentions(nn.Module):
+    def __init__(
+        self, 
+        dim,
+        heads,
+        dim_head,
+        rotary_emb=None,
+        pos_biases=None
+        ):
+        super().__init__()
+
+        self.dim = dim
+        self.heads = heads
+        self.dim_head = dim_head
+        self.rotary_emb = rotary_emb
+
+        self.pos_biases = pos_biases
+
+        self.depth_attention = Residual(PreNorm(dim, self.temporal_attn(axis=0)))
+        self.height_attention = Residual(PreNorm(dim, self.temporal_attn(axis=1)))
+        self.width_attention = Residual(PreNorm(dim, self.temporal_attn(axis=2)))
+        
+    def temporal_attn(self, axis=0):
+        return EinopsToAndFrom(axis_to_einops[axis][0], axis_to_einops[axis][1], Attention(self.dim, heads=self.heads, dim_head=self.dim_head, rotary_emb=self.rotary_emb))
+
+    def set_pos_biases(self, pos_biases):
+        self.pos_biases = pos_biases
+
+    def forward(self, x, **kwargs):
+        x0 = self.depth_attention(x, pos_bias=self.pos_biases[0], **kwargs)
+        x1 = self.height_attention(x, pos_bias=self.pos_biases[1], **kwargs)
+        x2 = self.width_attention(x, pos_bias=self.pos_biases[2], **kwargs)
+
+        return x0 + x1 + x2
+        
+
 # model
 
 
@@ -319,9 +360,6 @@ class Unet3D(nn.Module):
 
         rotary_emb = RotaryEmbedding(min(32, attn_dim_head))
 
-        def temporal_attn(dim): return EinopsToAndFrom('b c f h w', 'b (h w) f c', Attention(
-            dim, heads=attn_heads, dim_head=attn_dim_head, rotary_emb=rotary_emb))
-
         # realistically will not be able to generate that many frames of video... yet
         self.time_rel_pos_bias = RelativePositionBias(heads=attn_heads, max_distance=32)
 
@@ -331,11 +369,9 @@ class Unet3D(nn.Module):
         assert is_odd(init_kernel_size)
 
         init_padding = init_kernel_size // 2
-        # lappala
         self.init_conv = nn.Conv3d(channels, init_dim, (init_kernel_size, init_kernel_size, init_kernel_size), padding=(init_padding, init_padding, init_padding))
 
-        self.init_temporal_attn = Residual(
-            PreNorm(init_dim, temporal_attn(init_dim)))
+        self.init_one_dim_attention = OneDimAttentions(init_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)
 
         # dimensions
         dim_mults = default(dim_mults, (1, 2, 4, 8))
@@ -394,9 +430,8 @@ class Unet3D(nn.Module):
             self.downs.append(nn.ModuleList([
                 block_klass_cond(dim_in, dim_out),
                 block_klass_cond(dim_out, dim_out),
-                Residual(PreNorm(dim_out, SpatialLinearAttention(
-                    dim_out, heads=attn_heads))) if use_sparse_linear_attn else nn.Identity(),
-                Residual(PreNorm(dim_out, temporal_attn(dim_out))),
+                Residual(PreNorm(dim_out, SpatialLinearAttention(dim_out, heads=attn_heads))) if use_sparse_linear_attn else nn.Identity(),
+                OneDimAttentions(dim_out, attn_heads, attn_dim_head, rotary_emb=rotary_emb),
                 Downsample(dim_out) if not is_last else nn.Identity()
             ]))
 
@@ -407,8 +442,7 @@ class Unet3D(nn.Module):
             'b c f h w', 'b f (h w) c', Attention(mid_dim, heads=attn_heads))
 
         self.mid_spatial_attn = Residual(PreNorm(mid_dim, spatial_attn))
-        self.mid_temporal_attn = Residual(
-            PreNorm(mid_dim, temporal_attn(mid_dim)))
+        self.mid_one_dim_attention = OneDimAttentions(mid_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)
 
         self.mid_block2 = block_klass_cond(mid_dim, mid_dim)
 
@@ -418,9 +452,8 @@ class Unet3D(nn.Module):
             self.ups.append(nn.ModuleList([
                 block_klass_cond(dim_out * 2, dim_in),
                 block_klass_cond(dim_in, dim_in),
-                Residual(PreNorm(dim_in, SpatialLinearAttention(
-                    dim_in, heads=attn_heads))) if use_sparse_linear_attn else nn.Identity(),
-                Residual(PreNorm(dim_in, temporal_attn(dim_in))),
+                Residual(PreNorm(dim_in, SpatialLinearAttention(dim_in, heads=attn_heads))) if use_sparse_linear_attn else nn.Identity(),
+                OneDimAttentions(dim_in, attn_heads, attn_dim_head, rotary_emb=rotary_emb),
                 Upsample(dim_in) if not is_last else nn.Identity()
             ]))
 
@@ -429,6 +462,12 @@ class Unet3D(nn.Module):
             block_klass(dim * 2, dim),
             nn.Conv3d(dim, out_dim, 1)
         )
+
+    def get_pos_biases(self, x):
+        d_rel_pos_bias = self.time_rel_pos_bias(x.shape[-3], device=x.device)
+        h_rel_pos_bias = self.time_rel_pos_bias(x.shape[-2], device=x.device)
+        w_rel_pos_bias = self.time_rel_pos_bias(x.shape[-1], device=x.device)
+        return d_rel_pos_bias,h_rel_pos_bias,w_rel_pos_bias
 
     def forward_with_cond_scale(
         self,
@@ -467,16 +506,15 @@ class Unet3D(nn.Module):
         focus_present_mask = default(focus_present_mask, lambda: prob_mask_like(
             (batch,), prob_focus_present, device=device))
 
-        # x.shape[2] is the depth. I don't like this
-        time_rel_pos_bias = self.time_rel_pos_bias(x.shape[2], device=x.device)
+        pos_biases = self.get_pos_biases(x)
 
         x = self.init_conv(x)
         r = x.clone()
 
         print('\ninit ', x.shape)
 
-        # temporal attention is referred to the depth of the image, not to time t
-        x = self.init_temporal_attn(x, pos_bias=time_rel_pos_bias)
+        self.init_one_dim_attention.set_pos_biases(pos_biases)
+        x = self.init_one_dim_attention(x)
 
         print('\ntemp ', x.shape)
 
@@ -499,35 +537,38 @@ class Unet3D(nn.Module):
 
         h = []
 
-        for block1, block2, spatial_attn, temporal_attn, downsample in self.downs:
+        for block1, block2, spatial_attn, one_dim_attention, downsample in self.downs:
             x = block1(x, t)
             print('\nb1 ', x.shape)
             x = block2(x, t)
             print('\nb2 ', x.shape)
             x = spatial_attn(x)
-            x = temporal_attn(x, pos_bias=time_rel_pos_bias, focus_present_mask=focus_present_mask)
+            one_dim_attention.set_pos_biases(pos_biases)
+            x = one_dim_attention(x)
             print('\nspatial and temporal ', x.shape)
             h.append(x)
             x = downsample(x)
             print('\ndown ', x.shape)
-            time_rel_pos_bias = self.time_rel_pos_bias(x.shape[2], device=x.device)
+            pos_biases = self.get_pos_biases(x)
 
         x = self.mid_block1(x, t)
         x = self.mid_spatial_attn(x)
-        x = self.mid_temporal_attn(x, pos_bias=time_rel_pos_bias, focus_present_mask=focus_present_mask)
+        self.mid_one_dim_attention.set_pos_biases(pos_biases)
+        x = self.mid_one_dim_attention(x)
         x = self.mid_block2(x, t)
 
         print('\nmid ', x.shape)
 
-        for block1, block2, spatial_attn, temporal_attn, upsample in self.ups:
+        for block1, block2, spatial_attn, one_dim_attention, upsample in self.ups:
             x = torch.cat((x, h.pop()), dim=1)
             x = block1(x, t)
             x = block2(x, t)
             x = spatial_attn(x)
-            x = temporal_attn(x, pos_bias=time_rel_pos_bias, focus_present_mask=focus_present_mask)
+            one_dim_attention.set_pos_biases(pos_biases)
+            x = one_dim_attention(x)
             x = upsample(x)
             print('\nup ', x.shape)
-            time_rel_pos_bias = self.time_rel_pos_bias(x.shape[2], device=x.device)
+            pos_biases = self.get_pos_biases(x)
 
         x = torch.cat((x, r), dim=1)
         x = self.final_conv(x)

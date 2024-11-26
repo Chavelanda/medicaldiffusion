@@ -290,20 +290,27 @@ class Attention(nn.Module):
         out = rearrange(out, '... h n d -> ... n (h d)')
         return self.to_out(out)
 
-axis_to_einops = (
-            ('b c d h w', 'b (h w) d c'),
-            ('b c d h w', 'b (d w) h c'),
-            ('b c d h w', 'b (d h) w c') 
-        )
+axis_to_one_dim_attn_einops = (
+    ('b c d h w', 'b (h w) d c'),
+    ('b c d h w', 'b (d w) h c'),
+    ('b c d h w', 'b (d h) w c') 
+)
 
-class OneDimAttentions(nn.Module):
+axis_to_spatial_attn_einops = (
+    ('b c d h w', 'b c d h w'),
+    ('b c d h w', 'b c h d w'),
+    ('b c d h w', 'b c w d h'),
+)
+
+class FactorizedAttention(nn.Module):
     def __init__(
         self, 
         dim,
         heads,
-        dim_head,
+        dim_head=None,
         rotary_emb=None,
-        pos_biases=None
+        pos_biases=[None, None, None],
+        spatial=False,
         ):
         super().__init__()
 
@@ -314,20 +321,37 @@ class OneDimAttentions(nn.Module):
 
         self.pos_biases = pos_biases
 
-        self.depth_attention = Residual(PreNorm(dim, self.temporal_attn(axis=0)))
-        self.height_attention = Residual(PreNorm(dim, self.temporal_attn(axis=1)))
-        self.width_attention = Residual(PreNorm(dim, self.temporal_attn(axis=2)))
+        self.spatial = spatial
+
+        attn_func = self.spatial_attn if self.spatial else self.one_dim_attn
+
+        # When attenion is spatial, it is done on the two remaining axes 
+        # E.g. depth attention means attention on height-width axes
+        self.depth_attention = Residual(PreNorm(dim, attn_func(axis=0)))
+        self.height_attention = Residual(PreNorm(dim, attn_func(axis=1)))
+        self.width_attention = Residual(PreNorm(dim, attn_func(axis=2)))
         
-    def temporal_attn(self, axis=0):
-        return EinopsToAndFrom(axis_to_einops[axis][0], axis_to_einops[axis][1], Attention(self.dim, heads=self.heads, dim_head=self.dim_head, rotary_emb=self.rotary_emb))
+    def one_dim_attn(self, axis=0):
+        attn = Attention(self.dim, heads=self.heads, dim_head=self.dim_head, rotary_emb=self.rotary_emb)
+        return EinopsToAndFrom(axis_to_one_dim_attn_einops[axis][0], axis_to_one_dim_attn_einops[axis][1], attn)
+
+    def spatial_attn(self, axis=0):
+        attn = SpatialLinearAttention(self.dim, heads=self.heads)
+        return EinopsToAndFrom(axis_to_spatial_attn_einops[axis][0], axis_to_spatial_attn_einops[axis][1], attn)
 
     def set_pos_biases(self, pos_biases):
         self.pos_biases = pos_biases
 
     def forward(self, x, **kwargs):
-        x0 = self.depth_attention(x, pos_bias=self.pos_biases[0], **kwargs)
-        x1 = self.height_attention(x, pos_bias=self.pos_biases[1], **kwargs)
-        x2 = self.width_attention(x, pos_bias=self.pos_biases[2], **kwargs)
+        # Positional bias is only used for one dim attention
+        if self.spatial:
+            x0 = self.depth_attention(x)
+            x1 = self.height_attention(x)
+            x2 = self.width_attention(x)
+        else:
+            x0 = self.depth_attention(x, pos_bias=self.pos_biases[0], **kwargs)
+            x1 = self.height_attention(x, pos_bias=self.pos_biases[1], **kwargs)
+            x2 = self.width_attention(x, pos_bias=self.pos_biases[2], **kwargs)
 
         return x0 + x1 + x2
         
@@ -356,12 +380,10 @@ class Unet3D(nn.Module):
         super().__init__()
         self.channels = channels
 
-        # temporal attention and its relative positional encoding
-
+        # relative positional encoding for one dim attention
         rotary_emb = RotaryEmbedding(min(32, attn_dim_head))
-
         # realistically will not be able to generate that many frames of video... yet
-        self.time_rel_pos_bias = RelativePositionBias(heads=attn_heads, max_distance=32)
+        self.dim_rel_pos_bias = RelativePositionBias(heads=attn_heads, max_distance=32)
 
         # initial conv
 
@@ -371,7 +393,7 @@ class Unet3D(nn.Module):
         init_padding = init_kernel_size // 2
         self.init_conv = nn.Conv3d(channels, init_dim, (init_kernel_size, init_kernel_size, init_kernel_size), padding=(init_padding, init_padding, init_padding))
 
-        self.init_one_dim_attention = OneDimAttentions(init_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)
+        self.init_one_dim_attention = FactorizedAttention(init_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)
 
         # dimensions
         dim_mults = default(dim_mults, (1, 2, 4, 8))
@@ -380,7 +402,6 @@ class Unet3D(nn.Module):
         self.pad_divisors = (len(dim_mults), len(dim_mults), len(dim_mults))
 
         # time conditioning
-
         time_dim = dim * 4
         self.time_mlp = nn.Sequential(
             SinusoidalPosEmb(dim),
@@ -430,19 +451,16 @@ class Unet3D(nn.Module):
             self.downs.append(nn.ModuleList([
                 block_klass_cond(dim_in, dim_out),
                 block_klass_cond(dim_out, dim_out),
-                Residual(PreNorm(dim_out, SpatialLinearAttention(dim_out, heads=attn_heads))) if use_sparse_linear_attn else nn.Identity(),
-                OneDimAttentions(dim_out, attn_heads, attn_dim_head, rotary_emb=rotary_emb),
+                FactorizedAttention(dim_out, attn_heads, spatial=True) if use_sparse_linear_attn else nn.Identity(),
+                FactorizedAttention(dim_out, attn_heads, attn_dim_head, rotary_emb=rotary_emb),
                 Downsample(dim_out) if not is_last else nn.Identity()
             ]))
 
         mid_dim = dims[-1]
         self.mid_block1 = block_klass_cond(mid_dim, mid_dim)
 
-        spatial_attn = EinopsToAndFrom(
-            'b c f h w', 'b f (h w) c', Attention(mid_dim, heads=attn_heads))
-
-        self.mid_spatial_attn = Residual(PreNorm(mid_dim, spatial_attn))
-        self.mid_one_dim_attention = OneDimAttentions(mid_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)
+        self.mid_spatial_attn = FactorizedAttention(mid_dim, attn_heads, spatial=True)
+        self.mid_one_dim_attention = FactorizedAttention(mid_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)
 
         self.mid_block2 = block_klass_cond(mid_dim, mid_dim)
 
@@ -452,8 +470,8 @@ class Unet3D(nn.Module):
             self.ups.append(nn.ModuleList([
                 block_klass_cond(dim_out * 2, dim_in),
                 block_klass_cond(dim_in, dim_in),
-                Residual(PreNorm(dim_in, SpatialLinearAttention(dim_in, heads=attn_heads))) if use_sparse_linear_attn else nn.Identity(),
-                OneDimAttentions(dim_in, attn_heads, attn_dim_head, rotary_emb=rotary_emb),
+                FactorizedAttention(dim_in, attn_heads, spatial=True) if use_sparse_linear_attn else nn.Identity(),
+                FactorizedAttention(dim_in, attn_heads, attn_dim_head, rotary_emb=rotary_emb),
                 Upsample(dim_in) if not is_last else nn.Identity()
             ]))
 
@@ -464,9 +482,9 @@ class Unet3D(nn.Module):
         )
 
     def get_pos_biases(self, x):
-        d_rel_pos_bias = self.time_rel_pos_bias(x.shape[-3], device=x.device)
-        h_rel_pos_bias = self.time_rel_pos_bias(x.shape[-2], device=x.device)
-        w_rel_pos_bias = self.time_rel_pos_bias(x.shape[-1], device=x.device)
+        d_rel_pos_bias = self.dim_rel_pos_bias(x.shape[-3], device=x.device)
+        h_rel_pos_bias = self.dim_rel_pos_bias(x.shape[-2], device=x.device)
+        w_rel_pos_bias = self.dim_rel_pos_bias(x.shape[-1], device=x.device)
         return d_rel_pos_bias,h_rel_pos_bias,w_rel_pos_bias
 
     def forward_with_cond_scale(
@@ -496,12 +514,8 @@ class Unet3D(nn.Module):
                     ), 'cond must be passed in if cond_dim specified'
         batch, device = x.shape[0], x.device
 
-        print('\nstart ', x.shape)
-
         # pad to make downsizeable
         x, padding_sizes = pad_to_multiple(x, self.pad_divisors)
-
-        print('\npadding ', x.shape)
 
         focus_present_mask = default(focus_present_mask, lambda: prob_mask_like(
             (batch,), prob_focus_present, device=device))
@@ -511,17 +525,12 @@ class Unet3D(nn.Module):
         x = self.init_conv(x)
         r = x.clone()
 
-        print('\ninit ', x.shape)
-
         self.init_one_dim_attention.set_pos_biases(pos_biases)
         x = self.init_one_dim_attention(x)
-
-        print('\ntemp ', x.shape)
 
         t = self.time_mlp(time) if exists(self.time_mlp) else None
 
         # classifier free guidance
-
         if self.has_cond:
             # embed cond
             cond = torch.squeeze(self.class_cond_mlp(cond)) if self.use_class_cond else cond
@@ -529,8 +538,7 @@ class Unet3D(nn.Module):
             # mask cond with null_cond_prob
             batch, device = x.shape[0], x.device
             mask = prob_mask_like((batch,), null_cond_prob, device=device)
-            cond = torch.where(rearrange(mask, 'b -> b 1'),
-                               self.null_cond_emb, cond)
+            cond = torch.where(rearrange(mask, 'b -> b 1'), self.null_cond_emb, cond)
             
             # concatenate time and cond embeddings
             t = torch.cat((t, cond), dim=-1)
@@ -539,43 +547,42 @@ class Unet3D(nn.Module):
 
         for block1, block2, spatial_attn, one_dim_attention, downsample in self.downs:
             x = block1(x, t)
-            print('\nb1 ', x.shape)
             x = block2(x, t)
-            print('\nb2 ', x.shape)
+            
             x = spatial_attn(x)
             one_dim_attention.set_pos_biases(pos_biases)
             x = one_dim_attention(x)
-            print('\nspatial and temporal ', x.shape)
+            
             h.append(x)
             x = downsample(x)
-            print('\ndown ', x.shape)
+            
             pos_biases = self.get_pos_biases(x)
 
         x = self.mid_block1(x, t)
+
         x = self.mid_spatial_attn(x)
         self.mid_one_dim_attention.set_pos_biases(pos_biases)
         x = self.mid_one_dim_attention(x)
-        x = self.mid_block2(x, t)
 
-        print('\nmid ', x.shape)
+        x = self.mid_block2(x, t)
 
         for block1, block2, spatial_attn, one_dim_attention, upsample in self.ups:
             x = torch.cat((x, h.pop()), dim=1)
             x = block1(x, t)
             x = block2(x, t)
+
             x = spatial_attn(x)
             one_dim_attention.set_pos_biases(pos_biases)
             x = one_dim_attention(x)
+
             x = upsample(x)
-            print('\nup ', x.shape)
+
             pos_biases = self.get_pos_biases(x)
 
         x = torch.cat((x, r), dim=1)
         x = self.final_conv(x)
-        print('\nfinal ', x.shape)
         
         # crop to initial shape
         x = crop_to_original(x, padding_sizes)
-        print('\nend ', x.shape)
 
         return x

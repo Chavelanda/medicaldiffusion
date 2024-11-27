@@ -370,7 +370,7 @@ class VQGAN(pl.LightningModule):
         # compute start factor to begin with base_lr
         start_factor = self.cfg.model.base_lr/lr
         ae_scheduler = {'scheduler': torch.optim.lr_scheduler.LinearLR(opt_ae, start_factor=start_factor, total_iters=5), 'name': 'warmup-ae'}
-        plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau'}
+        plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau-ae'}
         
         return [opt_ae, opt_disc], [ae_scheduler, plateau_scheduler] 
 

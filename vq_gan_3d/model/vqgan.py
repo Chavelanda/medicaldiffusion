@@ -157,6 +157,10 @@ class VQGAN(pl.LightningModule):
 
         self.automatic_optimization = False
         self.gradient_clip_val = cfg.model.gradient_clip_val
+
+        # For ReduceLROnPlateau scheduler
+        self.val_step_metric = []
+
         self.save_hyperparameters()
         
 
@@ -317,11 +321,10 @@ class VQGAN(pl.LightningModule):
             opt_disc.step()
             
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
-    
 
     def on_train_epoch_end(self):
-        scheduler = self.lr_schedulers()
-        scheduler.step()
+        warmup_scheduler = self.lr_schedulers()[0]
+        warmup_scheduler.step()
 
 
     def validation_step(self, batch, batch_idx):
@@ -330,12 +333,21 @@ class VQGAN(pl.LightningModule):
         
         loss_ae = losses['val/recon_loss'] + losses['val/commitment_loss'] + losses['val/perceptual_loss']
         losses['val/loss_ae'] = loss_ae
+        self.val_step_metric.append(loss_ae)
 
         # Log image
         if batch_idx == 0:
             self.logger.experiment.log({'samples': [wandb.Image(frames[0], caption='original'), wandb.Image(frames[1].to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
         
         self.log_dict(losses, prog_bar=True, sync_dist=True)
+
+    def on_validation_epoch_end(self):
+        metric = torch.mean(torch.tensor(self.val_step_metric))
+
+        plateau_scheduler = self.lr_schedulers()[1]
+        plateau_scheduler.step(metric)
+
+        self.val_step_metric.clear()
 
     def test_step(self, batch, batch_idx):
         x = batch['data']
@@ -357,9 +369,10 @@ class VQGAN(pl.LightningModule):
         
         # compute start factor to begin with base_lr
         start_factor = self.cfg.model.base_lr/lr
-        ae_scheduler = torch.optim.lr_scheduler.LinearLR(opt_ae, start_factor=start_factor, total_iters=5)
+        ae_scheduler = {'scheduler': torch.optim.lr_scheduler.LinearLR(opt_ae, start_factor=start_factor, total_iters=5), 'name': 'warmup-ae'}
+        plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau'}
         
-        return [opt_ae, opt_disc], [ae_scheduler] 
+        return [opt_ae, opt_disc], [ae_scheduler, plateau_scheduler] 
 
 
 def Normalize(in_channels, norm_type='group', num_groups=32):

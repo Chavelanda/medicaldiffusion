@@ -8,7 +8,7 @@ import wandb
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, LearningRateMonitor
 import torch
 from torch.utils.data import DataLoader, Subset
 
@@ -51,15 +51,14 @@ def run(cfg: DictConfig):
 
     # model checkpointing callbacks
     callbacks = []
-    callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
+    callbacks.append(ModelCheckpoint(monitor='val/loss_ae',
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
-    # callbacks.append(ModelCheckpoint(every_n_train_steps=1416,
-    #                  save_top_k=-1, dirpath=base_dir, filename='train-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_epochs=15, save_top_k=-1,
+    callbacks.append(ModelCheckpoint(every_n_epochs=30, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
-    
     # progress bar callback
     callbacks.append(TQDMProgressBar(refresh_rate=50))
+    # log lr callback
+    callbacks.append(LearningRateMonitor(logging_interval='epoch'))
 
     # load the most recent checkpoint file
     ckpt_path = None

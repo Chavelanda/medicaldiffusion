@@ -36,16 +36,19 @@ class Codebook(nn.Module):
     def _init_embeddings(self, z):
         # z: [b, c, t, h, w]
         self._need_init = False
-        flat_inputs = shift_dim(z, 1, -1).flatten(end_dim=-2)
-        y = self._tile(flat_inputs)
+        if torch.any(self.N):
+            pass
+        else:
+            flat_inputs = shift_dim(z, 1, -1).flatten(end_dim=-2)
+            y = self._tile(flat_inputs)
 
-        d = y.shape[0]
-        _k_rand = y[torch.randperm(y.shape[0])][:self.n_codes]
-        if dist.is_initialized():
-            dist.broadcast(_k_rand, 0)
-        self.embeddings.data.copy_(_k_rand)
-        self.z_avg.data.copy_(_k_rand)
-        self.N.data.copy_(torch.ones(self.n_codes))
+            d = y.shape[0]
+            _k_rand = y[torch.randperm(y.shape[0])][:self.n_codes]
+            if dist.is_initialized():
+                dist.broadcast(_k_rand, 0)
+            self.embeddings.data.copy_(_k_rand)
+            self.z_avg.data.copy_(_k_rand)
+            self.N.data.copy_(torch.ones(self.n_codes))
 
     def forward(self, z):
         # z: [b, c, t, h, w]

@@ -11,9 +11,9 @@ DATASET_CLASSES = {
     'LIDC': (LIDCDataset, {'train': {'augmentation': True}, 'val': {'augmentation': False}}),
     'SKULL-BREAK': (SKULLBREAKDataset, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'SKULL-BREAK-TRIPLET': (SKULLBREAKDatasetTriplet, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
-    'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'qs': None, 'resize': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'qs': None, 'resize': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
-    'AllCTsSS': (AllCTsDatasetSS, {'train': {'split': 'train-val', 'resize': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resize': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}}),
-    'allcts-msssim': (AllCts_MSSSIM, {'train': {'split': 'train-val', 'samples': 1000, 'resize': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resize': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
+    'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'qs': None, 'resample': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'qs': None, 'resample': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
+    'AllCTsSS': (AllCTsDatasetSS, {'train': {'split': 'train-val', 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}}),
+    'allcts-msssim': (AllCts_MSSSIM, {'train': {'split': 'train-val', 'samples': 1000, 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
     'DEFAULT': (DEFAULTDataset, {'train': {}, 'val': {}})
 }
 

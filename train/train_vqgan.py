@@ -8,7 +8,7 @@ import wandb
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, LearningRateMonitor
 import torch
 from torch.utils.data import DataLoader, Subset
 
@@ -29,45 +29,47 @@ def run(cfg: DictConfig):
                                   num_workers=cfg.model.num_workers, sampler=sampler)
     val_dataloader = DataLoader(val_dataset, batch_size=cfg.model.batch_size,
                                 shuffle=False, num_workers=cfg.model.num_workers)
+    
+    base_dir = os.path.join(cfg.model.default_root_dir, cfg.dataset.name, cfg.model.default_root_dir_postfix, cfg.model.run_name)
+    print("Setting default_root_dir to {}".format(base_dir))
 
-    # automatically adjust learning rate
-    # capire come prendere i n devices!
-    bs, base_lr, ngpu, accumulate = cfg.model.batch_size, cfg.model.lr, 1, cfg.model.accumulate_grad_batches
+    # automatically adjust learning rate following https://arxiv.org/abs/1706.02677
+    batch_rate = cfg.model.devices*cfg.model.accumulate_grad_batches
+    actual_batch_size = cfg.model.batch_size*batch_rate
+    actual_lr = cfg.model.lr*batch_rate
+    print(f'Batch size is {cfg.model.batch_size}\tActual batch size is {actual_batch_size}')
+    print(f'Learning rate is {cfg.model.lr}\tActual learning rate is {actual_lr}')
 
     with open_dict(cfg):
-        cfg.model.lr = accumulate * (ngpu/8.) * (bs/4.) * base_lr
-        print("Setting learning rate to {:.2e} = {} (accumulate_grad_batches) * {} (num_gpus/8) * {} (batchsize/4) * {:.2e} (base_lr)".format(
-        cfg.model.lr, accumulate, ngpu/8, bs/4, base_lr))
-        cfg.model.default_root_dir = os.path.join(cfg.model.default_root_dir, cfg.dataset.name, cfg.model.default_root_dir_postfix, cfg.model.run_name)
-        print("Setting default_root_dir to {}".format(cfg.model.default_root_dir))
-        base_dir = cfg.model.default_root_dir
+        cfg.model.actual_batch_size = actual_batch_size
+        cfg.model.base_lr = cfg.model.lr
+        cfg.model.lr = actual_lr
+        
+        cfg.model.default_root_dir = base_dir
 
     model = VQGAN(cfg)
 
+    # model checkpointing callbacks
     callbacks = []
-    callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
+    callbacks.append(ModelCheckpoint(monitor='val/loss_ae',
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
-    # callbacks.append(ModelCheckpoint(every_n_train_steps=1416,
-    #                  save_top_k=-1, dirpath=base_dir, filename='train-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_epochs=15, save_top_k=-1,
+    callbacks.append(ModelCheckpoint(every_n_epochs=30, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
+    # progress bar callback
+    callbacks.append(TQDMProgressBar(refresh_rate=50))
+    # log lr callback
+    callbacks.append(LearningRateMonitor(logging_interval='epoch'))
 
     # load the most recent checkpoint file
     ckpt_path = None
-
-    if cfg.model.resume and os.path.exists(cfg.model.checkpoint_path):
-        print('Will resume from the recent ckpt')
-        # Check if checkpoint exists
-        if os.path.isfile(cfg.model.checkpoint_path):
-            model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path, cfg=cfg)
-            ckpt_path = cfg.model.checkpoint_path
-            print(f'Will resume from the recent ckpt {ckpt_path}')
-        else:
-            print('No latest_checkpoint.ckpt found in {}.'.format(cfg.model.checkpoint_path))
-            return None
-
+    if cfg.model.resume and os.path.isfile(cfg.model.checkpoint_path):
+        assert os.path.isfile(cfg.model.checkpoint_path), f'Resume is {cfg.model.resume} but {cfg.model.checkpoint_path} is not a checkpoint file!'
+        model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path, cfg=cfg)
+        ckpt_path = cfg.model.checkpoint_path
+        print(f'Will resume from the recent ckpt {ckpt_path}')
+        
     # create wandb logger
-    wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model="all")
+    wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model=False)
 
     trainer = pl.Trainer(
         accelerator=cfg.model.accelerator,
@@ -79,7 +81,8 @@ def run(cfg: DictConfig):
         max_epochs=cfg.model.max_epochs,
         precision=cfg.model.precision,
         logger=wandb_logger,
-        strategy='ddp_find_unused_parameters_true'
+        strategy='ddp_find_unused_parameters_true',
+        log_every_n_steps=50,
     )
 
     # Updating wandb configs

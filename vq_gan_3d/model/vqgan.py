@@ -44,6 +44,71 @@ def vanilla_d_loss(logits_real, logits_fake):
     return d_loss
 
 
+def pad_to_multiple(x, divisors=(4, 4, 4)):
+    """
+    Pads a 3D input tensor along its last three spatial dimensions to make them divisible
+    by the given divisors. Ensures symmetric padding where possible.
+    
+    Args:
+        x (torch.Tensor): 3D input tensor of shape (..., D, H, W).
+        divisors (tuple): A tuple of 3 integers specifying the divisors for the depth, height, and width.
+    
+    Returns:
+        tuple: (padded_tensor, padding_sizes)
+            - padded_tensor (torch.Tensor): Padded tensor.
+            - padding_sizes (tuple): Tuple of 3 tuples representing the padding applied 
+                                     for each dimension as (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right).
+    """
+    d, h, w = x.shape[-3], x.shape[-2], x.shape[-1]
+    div_d, div_h, div_w = divisors
+
+    # Compute padding for each dimension to make divisible
+    pad_d = (div_d - d % div_d) % div_d
+    pad_h = (div_h - h % div_h) % div_h
+    pad_w = (div_w - w % div_w) % div_w
+
+    # Distribute padding symmetrically, adding extra to the end if necessary
+    pad_front, pad_back = pad_d // 2, pad_d - pad_d // 2
+    pad_top, pad_bottom = pad_h // 2, pad_h - pad_h // 2
+    pad_left, pad_right = pad_w // 2, pad_w - pad_w // 2
+
+    # Apply padding using F.pad
+    padded_x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom, pad_front, pad_back))
+    
+    # Return padded tensor and the padding sizes
+    return padded_x, ((pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right))
+
+
+def crop_to_original(x, padding_sizes):
+    """
+    Crops a padded 3D tensor back to its original size based on the padding_sizes.
+    
+    Args:
+        x (torch.Tensor): The padded 3D tensor of shape (..., D, H, W).
+        padding_sizes (tuple): A tuple of 3 tuples representing the padding applied
+                               for each dimension as (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right).
+    
+    Returns:
+        torch.Tensor: Cropped tensor with the original size before padding.
+    """
+    (pad_front, pad_back), (pad_top, pad_bottom), (pad_left, pad_right) = padding_sizes
+    
+    # Compute the cropping indices
+    d_start = pad_front
+    d_end = -pad_back if pad_back > 0 else None
+    
+    h_start = pad_top
+    h_end = -pad_bottom if pad_bottom > 0 else None
+    
+    w_start = pad_left
+    w_end = -pad_right if pad_right > 0 else None
+    
+    # Crop the tensor using slicing
+    cropped_x = x[..., d_start:d_end, h_start:h_end, w_start:w_end]
+    
+    return cropped_x
+
+
 class VQGAN(pl.LightningModule):
     def __init__(self, cfg):
         super().__init__()
@@ -64,6 +129,10 @@ class VQGAN(pl.LightningModule):
 
         self.codebook = Codebook(cfg.model.n_codes, cfg.model.embedding_dim,
                                  no_random_restart=cfg.model.no_random_restart, restart_thres=cfg.model.restart_thres)
+        
+        # init padding
+        img_size = (cfg.dataset.d, cfg.dataset.h, cfg.dataset.w)
+        _, self.padding_sizes = pad_to_multiple(torch.rand(img_size), self.cfg.model.downsample)
 
         self.gan_feat_weight = cfg.model.gan_feat_weight
         # TODO: Changed batchnorm from sync to normal
@@ -88,10 +157,16 @@ class VQGAN(pl.LightningModule):
 
         self.automatic_optimization = False
         self.gradient_clip_val = cfg.model.gradient_clip_val
+
+        # For ReduceLROnPlateau scheduler
+        self.val_step_metric = []
+
         self.save_hyperparameters()
         
 
     def encode(self, x, include_embeddings=False, quantize=True):
+        x, _ = pad_to_multiple(x, self.cfg.model.downsample)
+
         h = self.pre_vq_conv(self.encoder(x))
         if quantize:
             vq_output = self.codebook(h)
@@ -107,9 +182,14 @@ class VQGAN(pl.LightningModule):
             latent = vq_output['encodings']
         h = F.embedding(latent, self.codebook.embeddings)
         h = self.post_vq_conv(shift_dim(h, -1, 1))
-        return self.decoder(h)
+        h = self.decoder(h)
+        h = crop_to_original(h, self.padding_sizes)
+        return h
 
     def forward(self, x, optimizer_idx=None, name='train'):
+        # Pad image so that it is divisible by downsampling scale
+        x, padding_sizes = pad_to_multiple(x, self.cfg.model.downsample)
+
         B, C, T, H, W = x.shape
 
         losses = {}
@@ -118,7 +198,7 @@ class VQGAN(pl.LightningModule):
         vq_output = self.codebook(z)
         x_recon = self.decoder(self.post_vq_conv(vq_output['embeddings']))
 
-        if name=='test': return x_recon
+        if name=='test': return crop_to_original(x_recon, padding_sizes)
 
         # VQ-VAE losses
         losses[f'{name}/perplexity'] = vq_output['perplexity']
@@ -242,18 +322,32 @@ class VQGAN(pl.LightningModule):
             
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
 
+    def on_train_epoch_end(self):
+        warmup_scheduler = self.lr_schedulers()[0]
+        warmup_scheduler.step()
+
+
     def validation_step(self, batch, batch_idx):
         x = batch['data'] 
         _, losses, frames = self.forward(x, name='val')
         
         loss_ae = losses['val/recon_loss'] + losses['val/commitment_loss'] + losses['val/perceptual_loss']
         losses['val/loss_ae'] = loss_ae
+        self.val_step_metric.append(loss_ae)
 
         # Log image
         if batch_idx == 0:
             self.logger.experiment.log({'samples': [wandb.Image(frames[0], caption='original'), wandb.Image(frames[1].to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
         
         self.log_dict(losses, prog_bar=True, sync_dist=True)
+
+    def on_validation_epoch_end(self):
+        metric = torch.mean(torch.tensor(self.val_step_metric))
+
+        plateau_scheduler = self.lr_schedulers()[1]
+        plateau_scheduler.step(metric)
+
+        self.val_step_metric.clear()
 
     def test_step(self, batch, batch_idx):
         x = batch['data']
@@ -272,49 +366,13 @@ class VQGAN(pl.LightningModule):
         opt_disc = torch.optim.Adam(list(self.image_discriminator.parameters()) +
                                     list(self.video_discriminator.parameters()),
                                     lr=lr, betas=(0.5, 0.9))
-        return opt_ae, opt_disc
-    
-    # def log_optim_0(self, vq_output, recon_loss, perceptual_loss, g_image_loss, g_video_loss, aeloss, image_gan_feat_loss, video_gan_feat_loss):
-    #     logs = {'train/g_image_loss': g_image_loss, 'train/g_video_loss': g_video_loss, 
-    #             'train/image_gan_feat_loss': image_gan_feat_loss, 
-    #             'train/video_gan_feat_loss': video_gan_feat_loss, 
-    #             'train/perceptual_loss': perceptual_loss, 'train/recon_loss': recon_loss, 
-    #             'train/aeloss': aeloss, 'train/commitment_loss': vq_output['commitment_loss'], 
-    #             'train/perplexity': vq_output['perplexity'], 'trainer/global_step': self.global_step}
-    #     self.log_dict(logs, prog_bar=True, on_step=True, on_epoch=True)
-    #     wandb.log(logs)
         
+        # compute start factor to begin with base_lr
+        start_factor = self.cfg.model.base_lr/lr
+        ae_scheduler = {'scheduler': torch.optim.lr_scheduler.LinearLR(opt_ae, start_factor=start_factor, total_iters=5), 'name': 'warmup-ae'}
+        plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau-ae'}
         
-    # def log_optim_1(self, logits_image_fake, logits_video_fake, logits_image_real, logits_video_real, d_image_loss, d_video_loss, discloss):
-    #     logs = {'train/logits_image_real': logits_image_real.mean().detach(), 
-    #             'train/logits_image_fake': logits_image_fake.mean().detach(), 
-    #             'train/logits_video_real': logits_video_real.mean().detach(), 
-    #             'train/logits_video_fake': logits_video_fake.mean().detach(), 
-    #             'train/d_image_loss': d_image_loss, 'train/d_video_loss': d_video_loss, 
-    #             'train/discloss': discloss, 'trainer/global_step': self.global_step}
-    #     self.log_dict(logs, prog_bar=True, on_step=True, on_epoch=True)
-    #     wandb.log(logs)
-
-    # def log_images(self, batch, **kwargs):
-    #     log = dict()
-    #     x = batch['data']
-    #     x = x.to(self.device)
-    #     frames, frames_rec, _, _ = self(x, log_image=True)
-    #     log["inputs"] = frames
-    #     log["reconstructions"] = frames_rec
-    #     #log['mean_org'] = batch['mean_org']
-    #     #log['std_org'] = batch['std_org']
-    #     return log
-
-    # def log_videos(self, batch, **kwargs):
-    #     log = dict()
-    #     x = batch['data']
-    #     _, _, x, x_rec = self(x, log_image=True)
-    #     log["inputs"] = x
-    #     log["reconstructions"] = x_rec
-    #     #log['mean_org'] = batch['mean_org']
-    #     #log['std_org'] = batch['std_org']
-    #     return log
+        return [opt_ae, opt_disc], [ae_scheduler, plateau_scheduler] 
 
 
 def Normalize(in_channels, norm_type='group', num_groups=32):
@@ -540,7 +598,7 @@ class NLayerDiscriminator(nn.Module):
                 res.append(model(res[-1]))
             return res[-1], res[1:]
         else:
-            return self.model(input), _
+            return self.model(input), None
 
 
 class NLayerDiscriminator3D(nn.Module):
@@ -594,4 +652,4 @@ class NLayerDiscriminator3D(nn.Module):
                 res.append(model(res[-1]))
             return res[-1], res[1:]
         else:
-            return self.model(input), _
+            return self.model(input), None

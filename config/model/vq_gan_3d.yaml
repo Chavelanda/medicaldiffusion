@@ -1,14 +1,14 @@
 seed: 1234
-batch_size: 2
-num_workers: 32
+batch_size: 1
+num_workers: 16
 
 accelerator: cuda
-devices: 1
+devices: 2
 accumulate_grad_batches: 1
 default_root_dir: checkpoints/vq_gan_3d
 default_root_dir_postfix: ''
-resume: True
-checkpoint_path: checkpoints/vq_gan_3d/MRNet/mrnet-vqgan-01/best_val-epoch=259-step=146900.ckpt
+resume: False
+checkpoint_path: 
 
 max_steps: 150000
 max_epochs: -1
@@ -18,24 +18,27 @@ gradient_clip_val: 1.0
 embedding_dim: 8 # Dimension of each code 
 n_codes: 16384 # Number of codes in the codebook
 n_hiddens: 16  # Number of channels of the input in the first conv before encoding 
-lr: 3e-4
+lr: 1e-5
 downsample: [4, 4, 4] # [4,4,4]
-disc_channels: 64
-disc_layers: 3
-discriminator_iter_start: 16379
-disc_loss_type: hinge
-image_gan_weight: 1.0
-video_gan_weight: 1.0
-l1_weight: 4.0
-gan_feat_weight: 4.0
-perceptual_weight: 4.0
-i3d_feat: False
+
+i3d_feat: False # not used??
 restart_thres: 1.0
 no_random_restart: False
 norm_type: group
-padding_type: replicate
 num_groups: 16
+padding_type: replicate
 
-wandb_entity: chavelanda
-wandb_project: medicaldiffusion
-run_name: allcts-vqgan-08
+l1_weight: 4.0
+perceptual_weight: 4.0
+
+disc_channels: 64
+disc_layers: 3
+discriminator_iter_start: 500000
+disc_loss_type: hinge
+image_gan_weight: 1.0
+video_gan_weight: 1.0
+gan_feat_weight: 4.0
+
+wandb_entity: 
+wandb_project: 
+run_name: 

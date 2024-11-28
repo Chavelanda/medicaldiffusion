@@ -106,7 +106,8 @@ def train(rank, world_size, cfg: DictConfig):
         train_num_steps=cfg.model.train_num_steps,
         gradient_accumulate_every=cfg.model.gradient_accumulate_every,
         amp=cfg.model.amp,
-        validate_save_and_sample_every=cfg.model.validate_save_and_sample_every,
+        save_and_sample_every_n_steps=cfg.model.save_and_sample_every_n_steps,
+        check_val_every_n_epoch=cfg.model.check_val_every_n_epoch,
         results_folder=cfg.model.results_folder,
         num_sample_rows=cfg.model.num_sample_rows,
         num_workers=cfg.model.num_workers,
@@ -141,7 +142,3 @@ if __name__ == '__main__':
 
     # wandb.finish()
 
-    # Incorporate GAN loss in DDPM training?
-    # Incorporate GAN loss in UNET segmentation?
-    # Maybe better if I don't use ema updates?
-    # Use with other vqgan latent space (the one with more channels?)

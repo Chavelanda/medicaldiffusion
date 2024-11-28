@@ -33,7 +33,8 @@ class Trainer(object):
         amp=False,
         step_start_ema=2000,
         update_ema_every=10,
-        validate_save_and_sample_every=1000,
+        save_and_sample_every_n_steps=1000,
+        check_val_every_n_epoch=1,
         results_folder='./results',
         num_sample_rows=1,
         max_grad_norm=None,
@@ -48,7 +49,8 @@ class Trainer(object):
         self.update_ema_every = update_ema_every
 
         self.step_start_ema = step_start_ema
-        self.validate_save_and_sample_every = validate_save_and_sample_every
+        self.save_and_sample_every_n_steps = save_and_sample_every_n_steps
+        self.check_val_every_n_epoch = check_val_every_n_epoch
 
         self.batch_size = train_batch_size
         self.gradient_accumulate_every = gradient_accumulate_every
@@ -58,6 +60,7 @@ class Trainer(object):
         
         self.len_dataloader = len(dl)
         self.dl = cycle(dl)
+        self.val_dl = val_dl
 
         assert len(self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
 
@@ -66,6 +69,7 @@ class Trainer(object):
         self.scheduler = torch.optim.lr_scheduler.LinearLR(self.opt, start_factor=start_factor, total_iters=5)
         
         self.step = 0
+        self.epoch = 0
 
         self.amp = amp
         self.scaler = GradScaler(enabled=amp)
@@ -78,6 +82,8 @@ class Trainer(object):
         self.conditioned = conditioned
 
         self.rank = rank
+
+        self.best_val_loss = float('inf')
 
         self.reset_parameters()
 
@@ -95,7 +101,8 @@ class Trainer(object):
             'step': self.step,
             'model': self.model.state_dict(),
             'ema': self.ema_model.state_dict(),
-            'scaler': self.scaler.state_dict()
+            'scaler': self.scaler.state_dict(),
+            'best_val_loss': self.best_val_loss,
         }
         torch.save(data, str(self.results_folder / f'model-{milestone}.pt'))
 
@@ -116,6 +123,7 @@ class Trainer(object):
         self.model.load_state_dict(data['model'], **kwargs)
         self.ema_model.load_state_dict(data['ema'], **kwargs)
         self.scaler.load_state_dict(data['scaler'])
+        self.best_val_loss = data['best_val_loss']
 
     def training_step(self, prob_focus_present, focus_present_mask):
         # Training step
@@ -153,10 +161,36 @@ class Trainer(object):
     def validation_step(self, prob_focus_present, focus_present_mask):
         self.ema_model.eval()
 
-        # Get milestone number
-        milestone = self.step // self.validate_save_and_sample_every
+        with torch.no_grad():
+            for item in self.val_dl:
+                data = item['data'].cuda()
+                cond = item['cond'].cuda() if self.conditioned else None
 
+                with autocast(enabled=self.amp):
+                    val_loss = self.ema_model(
+                        data,
+                        prob_focus_present=prob_focus_present,
+                        focus_present_mask=focus_present_mask,
+                        cond=cond,
+                    )
+        
+        # Save if best model
+        np_val_loss = val_loss.detach().cpu().numpy()
+        if np_val_loss < self.best_val_loss:
+            print('New best model!')
+            self.best_val_loss = np_val_loss
+            self.save('best')
+
+        log = {'val_loss': val_loss.item()}
+
+        return log
+    
+    
+    def save_and_sample(self):
+        self.ema_model.eval()
+        
         # Save milestone
+        milestone = self.step // self.save_and_sample_every_n_steps
         self.save(milestone)
 
         # Sample
@@ -182,22 +216,6 @@ class Trainer(object):
         # LOG gif to wandb
         log = {'gif': wandb.Video(video_path)}
 
-        # Validate
-        with torch.no_grad():
-            for item in self.val_dl:
-                data = item['data'].cuda()
-                cond = item['cond'].cuda() if self.conditioned else None
-
-                with autocast(enabled=self.amp):
-                    val_loss = self.ema_model(
-                        data,
-                        prob_focus_present=prob_focus_present,
-                        focus_present_mask=focus_present_mask,
-                        cond=cond,
-                    )
-        
-        log = {**log, 'val_loss': val_loss.item()}
-
         return log
 
 
@@ -213,27 +231,41 @@ class Trainer(object):
             pbar = tqdm(total=self.train_num_steps)
         
         while self.step < self.train_num_steps:
+            validate_or_sampled = False
+
             log = self.training_step(prob_focus_present, focus_present_mask)
 
             # Update EMA model when needed (only for rank 0)
             if self.rank == 0 and self.step % self.update_ema_every == 0:
                 self.step_ema()
 
-            # Validation step (only for rank 0)
-            if self.rank == 0 and self.step != 0 and self.step % self.validate_save_and_sample_every == 0:
+            # Validation step (only for rank 0). Does not happen at beginning. Happens at end of training epoch every check_val_every_n_epoch number of epochs
+            if self.rank == 0 and self.step != 0 and self.step % self.len_dataloader == 0 and self.epoch % self.check_val_every_n_epoch == 0:
+                print('\nValidating!')
+                validate_or_sampled = True
                 val_log = self.validation_step(prob_focus_present, focus_present_mask)
                 log = {**log, **val_log}
 
-            log = {**log, 'global_step': self.step, 'lr': self.scheduler.get_last_lr()}
+            # Save and sample (only for rank 0). Does not happen at beginning. Happens every save_and_sample_every_n_steps steps
+            if self.rank == 0 and self.step != 0 and self.step % self.save_and_sample_every_n_steps == 0:
+                print('\nSampling!')
+                validate_or_sampled = True
+                sample_log = self.save_and_sample()
+                log = {**log, **sample_log}
 
-            # Log
-            log_fn(log)
+            log = {**log, 'global_step': self.step, 'learning_rate': self.scheduler.get_last_lr()[0]}
+
+            # Log every 50 steps or when validation or sampling occurred
+            if self.step % 50 == 0 or validate_or_sampled:
+                log_fn(log)
             
             self.step += 1
+            validate_or_sampled = False
 
-            # Update scheduler if epoch is over
+            # Update scheduler if epoch is over. Update epoch counter
             if self.step % self.len_dataloader == 0:
                 self.scheduler.step()
+                self.epoch += 1
 
             if self.rank == 0 and self.step % 100 == 0:
                 pbar.update(100)

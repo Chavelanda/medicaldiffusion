@@ -342,18 +342,19 @@ class FactorizedAttention(nn.Module):
     def set_pos_biases(self, pos_biases):
         self.pos_biases = pos_biases
 
-    def forward(self, x, **kwargs):
+    def forward(self, xs, **kwargs):
+        x0, x1, x2 = xs
         # Positional bias is only used for one dim attention
         if self.spatial:
-            x0 = self.depth_attention(x)
-            x1 = self.height_attention(x)
-            x2 = self.width_attention(x)
+            x0 = self.depth_attention(x0)
+            x1 = self.height_attention(x1)
+            x2 = self.width_attention(x2)
         else:
-            x0 = self.depth_attention(x, pos_bias=self.pos_biases[0], **kwargs)
-            x1 = self.height_attention(x, pos_bias=self.pos_biases[1], **kwargs)
-            x2 = self.width_attention(x, pos_bias=self.pos_biases[2], **kwargs)
+            x0 = self.depth_attention(x0, pos_bias=self.pos_biases[0], **kwargs)
+            x1 = self.height_attention(x1, pos_bias=self.pos_biases[1], **kwargs)
+            x2 = self.width_attention(x2, pos_bias=self.pos_biases[2], **kwargs)
 
-        return x0 + x1 + x2
+        return x0, x1, x2
         
 
 # model
@@ -526,7 +527,7 @@ class Unet3D(nn.Module):
         r = x.clone()
 
         self.init_one_dim_attention.set_pos_biases(pos_biases)
-        x = self.init_one_dim_attention(x)
+        x = sum(self.init_one_dim_attention((x, x, x)))
 
         t = self.time_mlp(time) if exists(self.time_mlp) else None
 
@@ -549,9 +550,9 @@ class Unet3D(nn.Module):
             x = block1(x, t)
             x = block2(x, t)
             
-            x = spatial_attn(x)
+            xd, xh, xw = spatial_attn((x, x, x))
             one_dim_attention.set_pos_biases(pos_biases)
-            x = one_dim_attention(x)
+            x = sum(one_dim_attention((xd, xh, xw)))
             
             h.append(x)
             x = downsample(x)
@@ -560,9 +561,9 @@ class Unet3D(nn.Module):
 
         x = self.mid_block1(x, t)
 
-        x = self.mid_spatial_attn(x)
+        xd, xh, xw = self.mid_spatial_attn((x, x, x))
         self.mid_one_dim_attention.set_pos_biases(pos_biases)
-        x = self.mid_one_dim_attention(x)
+        x = sum(self.mid_one_dim_attention((xd, xh, xw)))
 
         x = self.mid_block2(x, t)
 
@@ -571,9 +572,9 @@ class Unet3D(nn.Module):
             x = block1(x, t)
             x = block2(x, t)
 
-            x = spatial_attn(x)
+            xd, xh, xw = spatial_attn((x, x, x))
             one_dim_attention.set_pos_biases(pos_biases)
-            x = one_dim_attention(x)
+            x = sum(one_dim_attention((xd, xh, xw)))
 
             x = upsample(x)
 

@@ -1,5 +1,6 @@
 import os
 import csv
+from collections import OrderedDict
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import numpy as np
@@ -44,13 +45,13 @@ def run(cfg: DictConfig):
         cond_dim = None
         use_class_cond = False
 
-    # Create model
-    image_size = cfg.model.diffusion_img_size
-    channels = cfg.model.diffusion_num_channels
-    num_frames = cfg.model.diffusion_depth_size
+    channels=cfg.model.diffusion_num_channels
+    d=cfg.model.diffusion_d
+    h=cfg.model.diffusion_h
+    w=cfg.model.diffusion_w
 
     model = Unet3D(
-            dim=image_size,
+            dim=cfg.model.dim,
             dim_mults=cfg.model.dim_mults,
             channels=channels,
             cond_dim=cond_dim,
@@ -60,14 +61,22 @@ def run(cfg: DictConfig):
     diffusion = GaussianDiffusion(
         model,
         vqgan_ckpt=cfg.model.vqgan_ckpt,
-        image_size=image_size,
-        num_frames=num_frames,
+        d=d,
+        h=h,
+        w=w,
         channels=channels,
         timesteps=cfg.model.timesteps,
     ).cuda()
 
     data = torch.load(cfg.model.milestone)
-    diffusion.load_state_dict(data['ema'])
+    
+    # Remove 'module.' prefix. Necessary if trained with data parallel
+    ema_state_dict = OrderedDict()
+    for k, v in data['ema'].items():
+        new_key = k.replace("module.", "")  
+        ema_state_dict[new_key] = v
+    
+    diffusion.load_state_dict(ema_state_dict)
     
     # Create metadata csv if not existing
     name_prefix = cfg.model.name_prefix if cfg.model.name_prefix else ''
@@ -114,14 +123,14 @@ def run(cfg: DictConfig):
             # class_names = ds.get_class_name_from_cond(cond) if conditioned else ['null' for _ in range(cfg.model.batch_size)]
             
             # Generate bs latents
-            latents = diffusion.p_sample_loop((batch_size, channels, num_frames, image_size, image_size), cond=cond, cond_scale=1)
+            latents = diffusion.p_sample_loop((batch_size, channels, d, h, w), cond=cond, cond_scale=1)
             
             latents = (((latents + 1.0) / 2.0) * (diffusion.vqgan.codebook.embeddings.max() -
                                                   diffusion.vqgan.codebook.embeddings.min())) + diffusion.vqgan.codebook.embeddings.min()
             
             # Quantize latents
             vq_output = diffusion.vqgan.codebook(latents)
-            latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, num_frames, image_size, image_size))
+            latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, d, h, w))
 
             if m > 1:
                 # Compute distance with train latents

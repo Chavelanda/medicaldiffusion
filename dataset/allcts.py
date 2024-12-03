@@ -40,13 +40,12 @@ class AllCTsDataset(Dataset):
         img, _ = nrrd.read(f'{self.root_dir}/{self.df["name"].iloc[0]}.nrrd')
         d, h, w = img.shape
       
+        # Resample transform
         self.resample = resample
+        self.resample_transform = tio.Resample(self.resample)
 
         # Update sizes based on resample
-        self.d, self.h, self.w, = d//self.resample, h//self.resample, w//self.resample
-
-        # Resample transform
-        self.resample_transform = tio.Resample(self.resample)
+        self.d, self.h, self.w = self.resample_transform(torch.rand((1, d, h, w), dtype=torch.float32)).shape[1:]
 
         # Binarize
         self.binarize = binarize
@@ -245,12 +244,9 @@ if __name__ == '__main__':
     # matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
     # print('fooed')
 
-    dataset = AllCTsDataset(root_dir='data/allcts-global-128', split='train-val', resample=1, qs=[2,3,4,5,6], rescale=False)
-    print(len(dataset))
-    img = dataset.__getitem__(10)['data']
+    dataset = AllCTsDataset(root_dir='data/allcts-051-256', split='train-val', resample=1.19, qs=[2,3,4,5,6])
+    print(dataset.d, dataset.h, dataset.w)
 
-    print(torch.max(img), torch.min(img))
-    print(img.shape)
     # matplotlib.image.imsave('foo.png', img[0, 65])
 
     # print('fooed again')

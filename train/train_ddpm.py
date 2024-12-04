@@ -74,7 +74,7 @@ def train(rank, world_size, cfg: DictConfig):
         use_class_cond = False
 
     unet3d = Unet3D(
-            dim=cfg.model.dim, # It is the channel dimension after init_conv. Why do we use w?
+            dim=cfg.model.dim, # It is the channel dimension after init_conv.
             dim_mults=cfg.model.dim_mults,
             channels=cfg.model.diffusion_num_channels,
             cond_dim=cond_dim,

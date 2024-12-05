@@ -1,0 +1,20 @@
+name: AllCTs-Upsampling
+root_dir: data/allcts-051-512
+resample: 2.3789
+image_channels: 1
+binarize: True
+rescale: True # If True, rescale to [-1,1]. If False, stays in range [0,1]
+
+metadata_name: metadata.csv
+split: train-val
+qs: # Leave empty for no filtering. Write as list. E.g. [5] or [2,3,4,5]
+
+val_root_dir: data/allcts-051-512
+val_metadata_name: metadata.csv
+val_split: test
+
+# To be specified for FID KID evaluation and VQVAE
+# TODO: remove
+d: 192
+h: 148
+w: 216

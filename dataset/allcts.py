@@ -9,7 +9,6 @@ import nrrd
 
 from dataset.utils import show_item
 
-import matplotlib.image
 
 class AllCTsDataset(Dataset):
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', qs=None, 
@@ -38,14 +37,14 @@ class AllCTsDataset(Dataset):
 
         # Read one 3d image and define sizes
         img, _ = nrrd.read(f'{self.root_dir}/{self.df["name"].iloc[0]}.nrrd')
-        d, h, w = img.shape
+        self.original_d, self.original_h, self.original_w = img.shape
       
         # Resample transform
         self.resample = resample
         self.resample_transform = tio.Resample(self.resample)
 
         # Update sizes based on resample
-        self.d, self.h, self.w = self.resample_transform(torch.rand((1, d, h, w), dtype=torch.float32)).shape[1:]
+        self.d, self.h, self.w = self.resample_transform(torch.rand((1, self.original_d, self.original_h, self.original_w), dtype=torch.float32)).shape[1:]
 
         # Binarize
         self.binarize = binarize
@@ -234,6 +233,40 @@ class AllCTsDatasetSS(AllCTsDataset):
         data = torch.stack((img, second_img), dim=0)
         
         return {'data': data}
+    
+
+class AllCTsDatasetUpsampling(AllCTsDataset):
+    def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', qs=None, binarize=False, rescale=True, resample=1, conditioned=True, metadata_name='metadata.csv'):
+        super().__init__(root_dir, split, qs, binarize, rescale, resample, conditioned, metadata_name)
+
+    def __getitem__(self, index):
+        entry = self.df.iloc[index]
+        path = os.path.join(self.root_dir, entry['name'] + '.nrrd')
+        
+        original_img, _ = nrrd.read(path)
+        original_img = torch.from_numpy(original_img)
+
+        original_img = original_img.unsqueeze(0).float()
+        img = self.resample_transform(original_img)
+
+        if self.binarize:
+            img = (img > 0.5).float()
+            original_img = (original_img > 0.5).float()
+
+        if self.rescale:
+            #  min-max normalized to the range between -1 and 1
+            img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
+            original_img = (original_img - original_img.min()) / (original_img.max() - original_img.min()) * 2 - 1
+
+        if self.conditioned:
+            quality_items = entry[entry.index.str.startswith('quality')]
+            cond = quality_items.to_numpy().astype(float)
+            cond = torch.tensor(cond).float()
+        else:
+            cond = None
+       
+        return {'data': img, 'data_original': original_img, 'cond': cond}
+
 
 if __name__ == '__main__':
     # dataset = AllCTsDatasetSS(root_dir='data/allcts-global-128', split='all', recon_root_dir='data/allcts-vqgan-07')
@@ -244,8 +277,12 @@ if __name__ == '__main__':
     # matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
     # print('fooed')
 
-    dataset = AllCTsDataset(root_dir='data/allcts-051-256', split='train-val', resample=1.19, qs=[2,3,4,5,6])
+    dataset = AllCTsDatasetUpsampling(root_dir='data/allcts-051-512', split='train-val', resample=2.3789)
     print(dataset.d, dataset.h, dataset.w)
+    print(dataset.original_d, dataset.original_h, dataset.original_w)
+
+    x_dict = dataset[0]
+    print(x_dict['data'].shape, x_dict['data_original'].shape, x_dict['cond'].shape)
 
     # matplotlib.image.imsave('foo.png', img[0, 65])
 

@@ -1,19 +1,16 @@
-from dataset import MRNetDataset, MRNetDatasetMSSSIM, MRNetDatasetSS, BRATSDataset, ADNIDataset, DUKEDataset, LIDCDataset, DEFAULTDataset, SKULLBREAKDataset, SKULLBREAKDatasetTriplet, AllCTsDataset, AllCTsDatasetSS, AllCts_MSSSIM
+from dataset import MRNetDataset, MRNetDatasetMSSSIM, MRNetDatasetSS, DEFAULTDataset, SKULLBREAKDataset, SKULLBREAKDatasetTriplet, AllCTsDataset, AllCTsDatasetSS, AllCts_MSSSIM, AllCTsDatasetUpsampling
 from torch.utils.data import WeightedRandomSampler
 
 DATASET_CLASSES = {
     'MRNet': (MRNetDataset, {'train': {'split': 'train', 'conditioned': True, 'metadata_name': 'metadata.csv', 'augment': False}, 'val': {'split': 'val', 'conditioned': True, 'metadata_name': 'metadata.csv', 'augment': False}}),
     'MRNetMSSSIM': (MRNetDatasetMSSSIM, {'train': {'split': 'train', 'metadata_name': 'metadata.csv', 'samples': 1000}, 'val': {'split': 'val', 'metadata_name': 'metadata.csv', 'samples': 1000}}),
     'MRNetSS': (MRNetDatasetSS, {'train': {'split': 'train', 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}, 'val': {'split': 'val', 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}}),
-    'BRATS': (BRATSDataset, {'train': {'imgtype': None, 'train': True, 'severity': None, 'resize': None}, 'val': {'imgtype': None, 'train': False, 'severity': None, 'resize': None}}),
-    'ADNI': (ADNIDataset, {'train': {'augmentation': True}, 'val': {'augmentation': False}}),
-    'DUKE': (DUKEDataset, {'train': {}, 'val': {}}),
-    'LIDC': (LIDCDataset, {'train': {'augmentation': True}, 'val': {'augmentation': False}}),
     'SKULL-BREAK': (SKULLBREAKDataset, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'SKULL-BREAK-TRIPLET': (SKULLBREAKDatasetTriplet, {'train': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}, 'val': {'resize_d': 1, 'resize_h': 1, 'resize_w': 1}}),
     'AllCTs': (AllCTsDataset, {'train': {'split': 'train-val', 'qs': None, 'resample': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'qs': None, 'resample': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
     'AllCTsSS': (AllCTsDatasetSS, {'train': {'split': 'train-val', 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv', 'recon_root_dir': None, 'recon_metadata_name': 'metadata.csv'}}),
     'allcts-msssim': (AllCts_MSSSIM, {'train': {'split': 'train-val', 'samples': 1000, 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'resample': 1, 'rescale': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
+    'AllCTs-Upsampling': (AllCTsDatasetUpsampling, {'train': {'split': 'train-val', 'qs': None, 'resample': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}, 'val': {'split': 'test', 'qs': None, 'resample': 1, 'rescale': True, 'conditioned': True, 'binarize': False, 'metadata_name': 'metadata.csv'}}),
     'DEFAULT': (DEFAULTDataset, {'train': {}, 'val': {}})
 }
 

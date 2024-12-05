@@ -9,6 +9,7 @@ from pathlib import Path
 from torch.optim import Adam
 
 from torch.cuda.amp import autocast, GradScaler
+import torch.distributed as dist
 
 from einops import rearrange
 
@@ -127,6 +128,8 @@ class Trainer(object):
 
     def training_step(self, prob_focus_present, focus_present_mask):
         # Training step
+        loss_acc = 0
+        counter = 0
         for _ in range(self.gradient_accumulate_every):
             item = next(self.dl)
             data = item['data'].cuda()
@@ -143,8 +146,8 @@ class Trainer(object):
 
                 self.scaler.scale(loss / self.gradient_accumulate_every).backward()
 
-
-        log = {'loss': loss.item()}
+            loss_acc += loss.item()*data.shape[0]
+            counter += data.shape[0]
 
         if exists(self.max_grad_norm):
             self.scaler.unscale_(self.opt)
@@ -155,33 +158,35 @@ class Trainer(object):
         self.scaler.update()
         self.opt.zero_grad()
 
-        return log
+        return loss_acc, counter 
 
 
     def validation_step(self, prob_focus_present, focus_present_mask):
         self.ema_model.eval()
 
         with torch.no_grad():
+            val_loss_acc = 0
             for item in self.val_dl:
                 data = item['data'].cuda()
                 cond = item['cond'].cuda() if self.conditioned else None
 
                 with autocast(enabled=self.amp):
-                    val_loss = self.ema_model(
+                    val_loss = self.ema_model.module(
                         data,
                         prob_focus_present=prob_focus_present,
                         focus_present_mask=focus_present_mask,
                         cond=cond,
                     )
-        
+                    val_loss_acc += val_loss.item() * data.shape[0]
+            
+            val_loss = val_loss_acc / len(self.val_dl.dataset)
         # Save if best model
-        np_val_loss = val_loss.detach().cpu().numpy()
-        if np_val_loss < self.best_val_loss:
+        if val_loss < self.best_val_loss:
             print('New best model!')
-            self.best_val_loss = np_val_loss
+            self.best_val_loss = val_loss
             self.save('best')
 
-        log = {'val_loss': val_loss.item()}
+        log = {'val_loss': val_loss}
 
         return log
     
@@ -202,8 +207,7 @@ class Trainer(object):
             print(f'Sampling {num_samples} images with condition {sample_cond}')
 
             # Sample the images
-            all_videos_list = list(
-                map(lambda n: self.ema_model.sample(batch_size=n, cond=sample_cond), batches))
+            all_videos_list = list(map(lambda n: self.ema_model.module.sample(batch_size=n, cond=sample_cond), batches))
             all_videos_list = torch.cat(all_videos_list, dim=0)
 
         # Save gif
@@ -229,11 +233,17 @@ class Trainer(object):
 
         if self.rank == 0:
             pbar = tqdm(total=self.train_num_steps)
+            pbar.update(self.step)
         
+        loss_acc = 0
+        counter = 0        
         while self.step < self.train_num_steps:
             validate_or_sampled = False
 
-            log = self.training_step(prob_focus_present, focus_present_mask)
+            loss_step, c_step = self.training_step(prob_focus_present, focus_present_mask)
+            loss_acc += loss_step
+            counter += c_step
+            log = {'loss': loss_acc / counter}
 
             # Update EMA model when needed (only for rank 0)
             if self.rank == 0 and self.step % self.update_ema_every == 0:
@@ -245,6 +255,8 @@ class Trainer(object):
                 validate_or_sampled = True
                 val_log = self.validation_step(prob_focus_present, focus_present_mask)
                 log = {**log, **val_log}
+                print('\nValidation over!')
+            dist.barrier()
 
             # Save and sample (only for rank 0). Does not happen at beginning. Happens every save_and_sample_every_n_steps steps
             if self.rank == 0 and self.step != 0 and self.step % self.save_and_sample_every_n_steps == 0:
@@ -252,23 +264,25 @@ class Trainer(object):
                 validate_or_sampled = True
                 sample_log = self.save_and_sample()
                 log = {**log, **sample_log}
+            dist.barrier()
 
             log = {**log, 'global_step': self.step, 'learning_rate': self.scheduler.get_last_lr()[0]}
 
             # Log every 50 steps or when validation or sampling occurred
             if self.step % 50 == 0 or validate_or_sampled:
                 log_fn(log)
-            
-            self.step += 1
-            validate_or_sampled = False
+                loss_acc, counter = 0, 0
 
             # Update scheduler if epoch is over. Update epoch counter
-            if self.step % self.len_dataloader == 0:
+            if self.step % self.len_dataloader == 0 and self.step != 0:
                 self.scheduler.step()
                 self.epoch += 1
 
-            if self.rank == 0 and self.step % 100 == 0:
-                pbar.update(100)
+            self.step += 1
+            validate_or_sampled = False
+
+            if self.rank == 0 and self.step % 50 == 0:
+                pbar.update(50)
         
         if self.rank == 0:
             pbar.close()

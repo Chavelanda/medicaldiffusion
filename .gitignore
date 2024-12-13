@@ -169,6 +169,7 @@ stats/
 latents/
 
 # Notebooks
+*.ipynb
 notebooks/
 
 # Experiment configs

@@ -167,3 +167,9 @@ stats/
 
 # Latents
 latents/
+
+# Notebooks
+notebooks/
+
+# Experiment configs
+config/experiment

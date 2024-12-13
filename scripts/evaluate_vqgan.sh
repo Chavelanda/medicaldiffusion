@@ -9,16 +9,16 @@ export CPATH="/usr/local/cuda-11.1/include:$CPATH"
 # Activate Python virtual environment
 source .venv/bin/activate
 
-# Reconstruct images
-# python -m evaluation.reconstruct_images dataset=allcts model=vq_gan_3d dataset.save_path=data/test
+# Reconstruct images. Uses training dataset config
+python -m evaluation.reconstruct_images model=reconstruct dataset=allcts +dataset.save_path=data/allcts-051-512-up-bin-ae
 
-# Build meshes
-python -m evaluation.build_meshes dataset=allcts model=vq_gan_3d dataset.root_dir=data/test +dataset.spacing="[0.3345859, 0.46262616, 0.49944812]"
+# Build meshes. Uses training dataset config
+# python -m evaluation.build_meshes dataset=allcts dataset.root_dir=data/allcts-051-216-ae dataset.resample=1 +dataset.spacing="[1.2138, 1.2138, 1.2138]" model=reconstruct
 
-# Calculate FID
-# python -m evaluation.calculate_fid_stats model=fid dataset=allcts dataset.root_dir=data/test
+# Calculate FID between test dataset config and train dataset config
+# python -m evaluation.calculate_fid model=fid model.run_name="fid-allcts-vqgan-07-train-med3d-01" model.extractor="med3d" model.batch_size=50 dataset=allcts 
 
 # Calculate MS-SSIM
-# python -m evaluation.calculate_msssim dataset=allcts-msssim model=msssim
+# python -m evaluation.calculate_msssim dataset=allcts-msssim model=msssim dataset.root_dir=data/allcts-lf-07
 
 

@@ -344,8 +344,8 @@ class VQGAN(pl.LightningModule):
     def on_validation_epoch_end(self):
         metric = torch.mean(torch.tensor(self.val_step_metric))
 
-        plateau_scheduler = self.lr_schedulers()[1]
-        plateau_scheduler.step(metric)
+        # plateau_scheduler = self.lr_schedulers()[1]
+        # plateau_scheduler.step(metric)
 
         self.val_step_metric.clear()
 

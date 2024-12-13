@@ -1,37 +1,39 @@
-vqgan_ckpt: checkpoints/vq_gan_3d/AllCTs/allcts-216-ae/best_val-epoch=394-step=143385.ckpt
+vqgan_ckpt: ???
 
 # Have to be derived from VQ-GAN Latent space dimensions -> normally ceil(dim/4) 
-diffusion_d: 48
-diffusion_h: 37
-diffusion_w: 54
+# Maybe derive automatically??
+diffusion_d: ???
+diffusion_h: ???
+diffusion_w: ???
 diffusion_num_channels: 8
+
 dim: 32
 dim_mults: 
 results_folder: checkpoints/ddpm
 results_folder_postfix: ''
 load_milestone: 
 
-batch_size: 1
+batch_size: 2
 num_workers: 32
 train_lr: 1e-4
 timesteps: 300 # number of steps
 sampling_timesteps:  # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
 loss_type: l1 # L1 or L2
-train_num_steps: 100001 # total training steps
+train_num_steps: 100000 # total training steps
 gradient_accumulate_every: 1 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
 num_sample_rows: 1 # how many images to sample at validation
 n_gpus: 1  # at least 1
 
-save_and_sample_every_n_steps: 700
+save_and_sample_every_n_steps: 10000
 check_val_every_n_epoch: 1
 
 cond: True # Conditional training?
 use_class_cond: True # If true, one-hot class labels are embedded and used as conditioning. If false, condition is used as it is.
 
-wandb_entity: 
-wandb_project: 
-run_name: 
+wandb_entity: ???
+wandb_project: ???
+run_name: ???
 
 

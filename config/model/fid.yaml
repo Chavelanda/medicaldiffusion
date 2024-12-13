@@ -1,19 +1,19 @@
-batch_size: 10 # The number of samples per batch during activations calculation.
+batch_size: 50 # The number of samples per batch during activations calculation.
 num_workers: 10 # The number of worker processes for data loading.
 
-extractor: vqvae # The specific type of ResNet model to use.
+extractor: med3d # The specific type of ResNet model to use. ['med3d', 'vqvae', 'stunet', 'misfm']
 
 cuda: True # A boolean indicating whether to use CUDA for computation.
 
 # Per il nuovo metodo
 epochs: 1
 
-wandb_entity: chavelanda
-wandb_project: medicaldiffusion
-run_name: fid-test
+wandb_entity: ???
+wandb_project: ???
+run_name: ???
 
 # per vqvae extractor
-vqvae_checkpoint: checkpoints/vq_gan_3d/AllCTs/allcts-vqgan-07/best_val-epoch=411-step=149968.ckpt
+vqvae_checkpoint: 
 
 # vecchio metodo
 # stats_dir:  # The directory where the FID statistics will be saved. # Forse non serve nel nuovo metodo

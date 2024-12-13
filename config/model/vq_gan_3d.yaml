@@ -39,6 +39,6 @@ image_gan_weight: 1.0
 video_gan_weight: 1.0
 gan_feat_weight: 4.0
 
-wandb_entity: 
-wandb_project: 
-run_name: 
+wandb_entity: ???
+wandb_project: ???
+run_name: ???

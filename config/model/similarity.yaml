@@ -1,9 +1,9 @@
 num_workers: 32
 batch_size: 20
 
-checkpoint_path: checkpoints/ss/AllCTsSS/allcts-ss-01/best_val-epoch=73-step=6734.ckpt # Path to embedding model. If empty, calculates similarity on row data
+checkpoint_path:  # Path to embedding model. If empty, calculates similarity on row data
 
-save_path: memorization/stats/allcts-ss-01 # Path to folder where to save coefficients
-name: train-vqgan-07-lf-07
+save_path: ??? # Path to folder where to save coefficients
+name: ??? # Name of the file
 
 accelerator: cuda

@@ -1,16 +1,20 @@
+defaults:
+  - allcts
+
 name: AllCTsSS
-root_dir: data/allcts-global-128
+
+# root_dir: data/allcts-global-128
 recon_root_dir: data/allcts-vqgan-07
-resize: 1
-image_channels: 1
-binarize: True
-rescale: True # If True, rescale to [-1,1]. If False, stays in range [0,1]
+# resize: 1
+# image_channels: 1
+# binarize: True
+# rescale: True # If True, rescale to [-1,1]. If False, stays in range [0,1]
 
-metadata_name: metadata.csv
+# metadata_name: metadata.csv
 recon_metadata_name: 'metadata.csv'
-split: train-val
+# split: train-val
 
-val_root_dir: data/allcts-global-128
+# val_root_dir: data/allcts-global-128
 
-val_metadata_name: metadata.csv
-val_split: test
+# val_metadata_name: metadata.csv
+# val_split: test

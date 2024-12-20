@@ -82,7 +82,7 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-
+# lappala
 def Upsample(dim):
     return nn.ConvTranspose3d(dim, dim, (4, 4, 4), (2, 2, 2), (1, 1, 1))
 
@@ -119,6 +119,7 @@ class PreNorm(nn.Module):
 class Block(nn.Module):
     def __init__(self, dim, dim_out, groups=8):
         super().__init__()
+        # lappala
         self.proj = nn.Conv3d(dim, dim_out, (3, 3, 3), padding=(1, 1, 1))
         self.norm = nn.GroupNorm(groups, dim_out)
         self.act = nn.SiLU()
@@ -347,14 +348,14 @@ class FactorizedAttention(nn.Module):
         # Positional bias is only used for one dim attention
         if self.spatial:
             x0 = self.depth_attention(x0)
-            x1 = self.height_attention(x1)
-            x2 = self.width_attention(x2)
+            # x1 = self.height_attention(x1)
+            # x2 = self.width_attention(x2)
         else:
             x0 = self.depth_attention(x0, pos_bias=self.pos_biases[0], **kwargs)
-            x1 = self.height_attention(x1, pos_bias=self.pos_biases[1], **kwargs)
-            x2 = self.width_attention(x2, pos_bias=self.pos_biases[2], **kwargs)
+            # x1 = self.height_attention(x1, pos_bias=self.pos_biases[1], **kwargs)
+            # x2 = self.width_attention(x2, pos_bias=self.pos_biases[2], **kwargs)
 
-        return x0, x1, x2
+        return x0, torch.zeros_like(x0), torch.zeros_like(x0) # x1, x2
         
 
 # model
@@ -392,6 +393,7 @@ class Unet3D(nn.Module):
         assert is_odd(init_kernel_size)
 
         init_padding = init_kernel_size // 2
+        # lappala
         self.init_conv = nn.Conv3d(channels, init_dim, (init_kernel_size, init_kernel_size, init_kernel_size), padding=(init_padding, init_padding, init_padding))
 
         self.init_one_dim_attention = FactorizedAttention(init_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)

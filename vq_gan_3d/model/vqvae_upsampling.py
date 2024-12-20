@@ -16,19 +16,24 @@ class VQVAE_Upsampling(VQGAN):
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
     # that is equal to the original size provided as attribute of the init method.
 
-    def __init__(self, cfg, original_d, original_h, original_w, architecture):
+    def __init__(self, cfg, original_d, original_h, original_w, architecture='base', architecture_down='base'):
         super().__init__(cfg)
         self.size = (original_d, original_h, original_w)
+        self.architecture_down = architecture_down
         self.architecture = architecture
+
+        print(f'\nSetting up with decoder architecture {architecture} and encoder architecture {architecture_down}\n')
 
         setup_dict = {
             'up': self.setup_up,
             'up_conv': self.setup_up_conv,
-            'up_before_last': self.setup_up_before_last,
+            'up_res_conv': self.setup_up_res_conv,
             'super': self.setup_super,
-            'super_before_last': self.setup_super_before_last
+            'base': lambda *args, **kwargs: None,
+            'down_furbo': self.setup_down_furbo
         }
-
+        
+        setup_dict[self.architecture_down]()
         setup_dict[self.architecture]()
 
     def setup_up(self):
@@ -40,21 +45,22 @@ class VQVAE_Upsampling(VQGAN):
 
     def setup_up_conv(self):
         # As last layer I do a deterministic trilinear upsampling
-        # Moreover, I add a final con layer
+        # Moreover, I add a final conv layer
         conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)
         upsampling = nn.Upsample(size=self.size, mode='trilinear')
         conv2 = SamePadConv3d(self.cfg.dataset.image_channels, self.cfg.dataset.image_channels, kernel_size=3)
 
         self.decoder.conv_last = nn.Sequential(conv1, upsampling, conv2)
-    
-    def setup_up_before_last(self):
-        # The layer are the same as in setup_up,
-        # but in this case I first upsample and then I apply the last conv layer
-        upsampling = nn.Upsample(size=self.size, mode='trilinear')
-        conv = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)
 
-        self.decoder.conv_last = nn.Sequential(upsampling, conv)
-    
+    def setup_up_res_conv(self):
+        # As last layer I do a deterministic trilinear upsampling
+        # Moreover, I add a final residual conv layer
+        conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)
+        upsampling = nn.Upsample(size=self.size, mode='trilinear')
+        conv2 = ResidualSamePadConv3d(self.cfg.dataset.image_channels, self.cfg.dataset.image_channels, kernel_size=3)
+
+        self.decoder.conv_last = nn.Sequential(conv1, upsampling, conv2)
+
     def setup_super(self):
         # In this case, instead of a trilinear upsampling, I apply a learnable transposed convolution.
         # The transposed convolution is initialized as a trilinear upsampling (it makes sense since we are in the image space)
@@ -67,9 +73,11 @@ class VQVAE_Upsampling(VQGAN):
 
         self.decoder.conv_last = nn.Sequential(conv, up1, up2)
 
-    def setup_super_before_last(self):
-        pass
+    def setup_down_furbo(self):
+        conv1 = SamePadConv3d(self.cfg.dataset.image_channels, 8, kernel_size=3, stride=2, padding_type=self.cfg.model.padding_type)
+        conv2 = SamePadConv3d(8, self.cfg.model.n_hiddens, kernel_size=3, padding_type=self.cfg.model.padding_type)
 
+        self.encoder.conv_first = nn.Sequential(conv1, conv2)
 
     def init_trilinear_kernel(self, kernel_size, conv):
         # Generate 1D kernel
@@ -182,7 +190,72 @@ class VQVAE_Upsampling(VQGAN):
         plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau-ae'}
         
         return [opt_ae], [ae_scheduler, plateau_scheduler] 
+
+
+class ResidualSamePadConv3d(nn.Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size):
+        super().__init__()
+        self.conv = SamePadConv3d(in_channels, out_channels, kernel_size=kernel_size)
+
+    def forward(self, x):
+        return x + self.conv(x)
+
+
+class SequentialSamePadConv3D(nn.Module):
     
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=True, padding_type='replicate'):
+        super().__init__()
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size,) * 3
+        if isinstance(stride, int):
+            stride = (stride,) * 3
+
+        # assumes that the input shape is divisible by stride
+        total_pad = tuple([k - s for k, s in zip(kernel_size, stride)])
+        pad_input = []
+        for p in total_pad[::-1]:  # reverse since F.pad starts from last dim
+            pad_input.append((p // 2 + p % 2, p // 2))
+        pad_input = sum(pad_input, tuple())
+        self.pad_input = pad_input
+        self.padding_type = padding_type
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.bias = bias
+
+        # Initialize the convolutional weights and biases
+        self.weights = nn.Parameter(torch.randn(out_channels, in_channels, *kernel_size))
+        if bias:
+            self.biases = nn.Parameter(torch.randn(out_channels))
+        else:
+            self.biases = None
+
+    def forward(self, x):
+        output = torch.zeros((x.shape[0], self.out_channels, *x.shape[2:]), device=x.device, dtype=x.dtype)
+        x = F.pad(x, self.pad_input, mode=self.padding_type)
+
+        # Compute output channels sequentially
+        for out_c in range(self.out_channels):
+            temp = torch.zeros(x.shape[0], 1, *output.shape[2:], device=x.device, dtype=x.dtype)
+            for in_c in range(self.in_channels):
+                temp += F.conv3d(
+                    x[:, in_c:in_c+1, :, :, :],  # Single input channel
+                    self.weights[out_c:out_c+1, in_c:in_c+1, :, :, :],  # Corresponding weights
+                    bias=None,
+                    stride=self.stride,
+                    padding=0
+                )
+            # Add bias
+            if self.bias:
+                temp += self.biases[out_c]
+
+            output[:, out_c, :, :, :] = temp.squeeze(1)
+        
+        return output
+
 
 
 if __name__ == '__main__':

@@ -12,4 +12,4 @@ source .venv/bin/activate
 # Run Python script
 # python -m train.train_vqgan dataset=allcts model=vq_gan_3d
 
-python -m train.train_vqvae_upsampling +experiment=ae-up-conv
+python -m train.train_vqvae_upsampling +experiment=ae-up-res-conv

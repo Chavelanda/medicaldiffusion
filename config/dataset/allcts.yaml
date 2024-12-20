@@ -14,7 +14,7 @@ val_metadata_name: metadata.csv
 val_split: test
 
 # To be specified for FID KID evaluation and VQVAE
-# TODO: remove
-d: 192
-h: 148
-w: 216
+# TODO: remove -> Should be working now
+# d: 192
+# h: 148
+# w: 216

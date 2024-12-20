@@ -9,6 +9,7 @@ from tqdm import tqdm
 from dataset.get_dataset import get_dataset
 import dataset.utils as utils
 from vq_gan_3d.model import VQGAN
+from vq_gan_3d.model.vqvae_upsampling import VQVAE_Upsampling
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
@@ -23,7 +24,7 @@ def run(cfg: DictConfig):
     assert os.path.isfile(cfg.model.checkpoint_path), "Checkpoint file for VQGAN must be specified"
     
     ckpt_path = cfg.model.checkpoint_path
-    vqgan = VQGAN.load_from_checkpoint(ckpt_path).to(accelerator)
+    vqgan = VQVAE_Upsampling.load_from_checkpoint(ckpt_path).to(accelerator)
     vqgan.eval()
 
     save_path = cfg.dataset.save_path
@@ -48,6 +49,10 @@ def run(cfg: DictConfig):
             split = dataset.df.iloc[i, :]['split']
 
             reconstructed_batch = vqgan.test_step(batch, 0).cpu()
+
+            # Upsampling 
+            # reconstructed_batch = torch.nn.functional.interpolate(reconstructed_batch, size=(456,352,512), mode='trilinear')
+
             dataset.save(name, reconstructed_batch, save_path)
 
             # Append metadata to csv

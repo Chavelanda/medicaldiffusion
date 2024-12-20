@@ -42,11 +42,17 @@ def run(cfg: DictConfig):
         
         cfg.model.default_root_dir = base_dir
 
-    model = VQVAE_Upsampling(cfg, original_d=train_dataset.original_d, original_h=train_dataset.original_h, original_w=train_dataset.original_w, architecture=cfg.model.architecture)
+        # Set dataset sizes
+        cfg.dataset.d = train_dataset.d
+        cfg.dataset.h = train_dataset.h
+        cfg.dataset.w = train_dataset.w
+
+
+    model = VQVAE_Upsampling(cfg, original_d=train_dataset.original_d, original_h=train_dataset.original_h, original_w=train_dataset.original_w, architecture=cfg.model.architecture, architecture_down=cfg.model.architecture_down)
 
     # model checkpointing callbacks
     callbacks = []
-    callbacks.append(ModelCheckpoint(monitor='val/loss_ae',
+    callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_epochs=30, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))

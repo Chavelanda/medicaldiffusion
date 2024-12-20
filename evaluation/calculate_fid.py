@@ -29,7 +29,7 @@ def run(cfg: DictConfig):
 
     device = 'cuda' if cfg.model.cuda else 'cpu'
 
-    input_img_size = (cfg.dataset.image_channels, cfg.dataset.d, cfg.dataset.h, cfg.dataset.w)
+    input_img_size = (cfg.dataset.image_channels, dataset_real.d, dataset_real.h, dataset_real.w)
 
     fid = FrechetInceptionDistance(feature=extractor, normalize=True, compute_on_cpu=True, input_img_size=input_img_size).to(device)
 

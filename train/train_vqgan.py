@@ -47,6 +47,11 @@ def run(cfg: DictConfig):
         
         cfg.model.default_root_dir = base_dir
 
+        # Set dataset sizes
+        cfg.dataset.d = train_dataset.d
+        cfg.dataset.h = train_dataset.h
+        cfg.dataset.w = train_dataset.w
+
     model = VQGAN(cfg)
 
     # model checkpointing callbacks

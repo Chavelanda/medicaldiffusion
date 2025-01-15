@@ -128,7 +128,7 @@ class AllCTsDataset(Dataset):
         return [name, split, cond_name]
     
     @staticmethod
-    def save(item_name, item, save_path):
+    def save(item_name, item, save_path, binarize=True):
         # Transform the item to numpy array
         if isinstance(item, torch.Tensor):
             item = item.numpy()
@@ -139,7 +139,9 @@ class AllCTsDataset(Dataset):
 
         #  min-max normalize to the range between 0 and 1 and binarize
         item = (item - item.min()) / (item.max() - item.min())
-        item = (item > 0.5).astype(float)
+        
+        if binarize:
+            item = (item > 0.5).astype(float)
         
         save_path = os.path.join(save_path, item_name + '.nrrd')
         

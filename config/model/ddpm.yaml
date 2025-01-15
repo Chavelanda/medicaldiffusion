@@ -13,24 +13,25 @@ results_folder: checkpoints/ddpm
 results_folder_postfix: ''
 load_milestone: 
 
-batch_size: 2
+batch_size: 4
 num_workers: 32
-train_lr: 1e-4
+train_lr: 5e-5
 timesteps: 300 # number of steps
 sampling_timesteps:  # number of sampling timesteps (using ddim for faster inference [see citation for ddim paper])
 loss_type: l1 # L1 or L2
-train_num_steps: 100000 # total training steps
+train_num_steps: 100001 # total training steps
 gradient_accumulate_every: 1 # gradient accumulation steps
 ema_decay: 0.995 # exponential moving average decay
 amp: False # turn on mixed precision
 num_sample_rows: 1 # how many images to sample at validation
-n_gpus: 1  # at least 1
+n_gpus: 2  # at least 1
 
 save_and_sample_every_n_steps: 10000
-check_val_every_n_epoch: 1
+check_val_every_n_epoch: 5
 
 cond: True # Conditional training?
 use_class_cond: True # If true, one-hot class labels are embedded and used as conditioning. If false, condition is used as it is.
+null_cond_prob: 0. # Probability of using null condition
 
 wandb_entity: ???
 wandb_project: ???

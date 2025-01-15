@@ -156,6 +156,9 @@ outputs/
 # Data dir
 data/
 
+# Meshes
+meshes/
+
 # Pretrained models
 pretrain/
 *.pkl

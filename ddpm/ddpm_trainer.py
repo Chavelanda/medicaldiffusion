@@ -41,6 +41,7 @@ class Trainer(object):
         max_grad_norm=None,
         num_workers=20,
         conditioned=False,
+        null_cond_prob=0.,
         rank=0,
     ):
         super().__init__()
@@ -81,6 +82,7 @@ class Trainer(object):
         self.results_folder.mkdir(exist_ok=True, parents=True)
 
         self.conditioned = conditioned
+        self.null_cond_prob = null_cond_prob
 
         self.rank = rank
 
@@ -142,6 +144,7 @@ class Trainer(object):
                     prob_focus_present=prob_focus_present,
                     focus_present_mask=focus_present_mask,
                     cond=cond,
+                    null_cond_prob=self.null_cond_prob,
                 )
 
                 self.scaler.scale(loss / self.gradient_accumulate_every).backward()
@@ -176,6 +179,7 @@ class Trainer(object):
                         prob_focus_present=prob_focus_present,
                         focus_present_mask=focus_present_mask,
                         cond=cond,
+                        null_cond_prob=self.null_cond_prob,
                     )
                     val_loss_acc += val_loss.item() * data.shape[0]
             

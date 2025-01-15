@@ -112,6 +112,7 @@ def train(rank, world_size, cfg: DictConfig):
         num_sample_rows=cfg.model.num_sample_rows,
         num_workers=cfg.model.num_workers,
         conditioned=cfg.model.cond,
+        null_cond_prob=cfg.model.null_cond_prob,
         rank=rank,
     )
 

@@ -134,6 +134,8 @@ class VQGAN(pl.LightningModule):
         img_size = (cfg.dataset.d, cfg.dataset.h, cfg.dataset.w)
         _, self.padding_sizes = pad_to_multiple(torch.rand(img_size), self.cfg.model.downsample)
 
+        print('Image and padding sizes: ', img_size, self.padding_sizes)
+
         self.gan_feat_weight = cfg.model.gan_feat_weight
         # TODO: Changed batchnorm from sync to normal
         self.image_discriminator = NLayerDiscriminator(

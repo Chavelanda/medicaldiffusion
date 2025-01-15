@@ -11,6 +11,9 @@ from dataset.utils import show_item
 
 
 class AllCTsDataset(Dataset):
+
+    cond_dim = 5
+
     def __init__(self, root_dir='data/AllCTs_nrrd_global', split='train', qs=None, 
                 binarize=False, rescale=True, resample=1, conditioned=True, metadata_name='metadata.csv'):
         
@@ -54,10 +57,6 @@ class AllCTsDataset(Dataset):
 
         # Condition
         self.conditioned = conditioned
-        self.cond_dim = self.input_df['quality'].nunique()
-
-        # One-hot encoding of the condition
-        self.df = pd.get_dummies(self.df, columns=['quality'])
 
     def __len__(self):
         return len(self.df)
@@ -80,9 +79,8 @@ class AllCTsDataset(Dataset):
             img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
 
         if self.conditioned:
-            quality_items = entry[entry.index.str.startswith('quality')]
-            cond = quality_items.to_numpy().astype(float)
-            cond = torch.tensor(cond).float()
+            cond = entry['quality'] - 2
+            cond = torch.tensor([cond])
         else:
             cond = None
        
@@ -92,15 +90,15 @@ class AllCTsDataset(Dataset):
         # Tensor of zeros with one in a random position for each element of the batch
         cond = torch.zeros((batch_size, self.cond_dim))
         if random:
-            cond[torch.arange(batch_size), torch.randint(0, self.cond_dim, (batch_size,))] = 1
+            cond = torch.randint(0,self.cond_dim, (batch_size, 1))
         else:
             assert class_idx is not None, 'If random is False, class_idx must be specified'
-            cond[:, class_idx] = 1
+            cond = torch.randint(class_idx, class_idx+1, (batch_size, 1))
         return cond
     
     def get_class_name_from_cond(self, cond):
-        quality = torch.argmax(cond, dim=1).cpu().numpy() + 2
-        return [f'{q}' for q in quality]
+        quality = cond.cpu().numpy() + 2
+        return [f'{int(q)}' for q in quality]
         
     def get_named_item(self, item_name, vmin=0, vmax=1, path=None, show=True):
         if path is None:
@@ -259,9 +257,8 @@ class AllCTsDatasetUpsampling(AllCTsDataset):
             original_img = (original_img - original_img.min()) / (original_img.max() - original_img.min()) * 2 - 1
 
         if self.conditioned:
-            quality_items = entry[entry.index.str.startswith('quality')]
-            cond = quality_items.to_numpy().astype(float)
-            cond = torch.tensor(cond).float()
+            cond = entry['quality'] - 2
+            cond = torch.tensor([cond])
         else:
             cond = None
        
@@ -277,12 +274,18 @@ if __name__ == '__main__':
     # matplotlib.image.imsave('foo2.png', img[1, 0, 64, :,:])
     # print('fooed')
 
-    dataset = AllCTsDatasetUpsampling(root_dir='data/allcts-051-512', split='train-val', resample=2.3789)
+    # dataset = AllCTsDatasetUpsampling(root_dir='data/allcts-051-512', split='train-val', resample=2.3789)
+    dataset = AllCTsDatasetUpsampling(root_dir='data/allcts-051-512-classifier-free-class-embedding-cond-scale-7-gen-testqs5', split='train-val', resample=2.3789)
     print(dataset.d, dataset.h, dataset.w)
     print(dataset.original_d, dataset.original_h, dataset.original_w)
+    print(dataset.input_df.head())
 
     x_dict = dataset[0]
-    print(x_dict['data'].shape, x_dict['data_original'].shape, x_dict['cond'].shape)
+    print(x_dict['data'].shape, x_dict['data_original'].shape, x_dict['cond'])
+
+    print(dataset.get_cond(5, random=True))
+
+    print(dataset.get_class_name_from_cond(x_dict['cond']))
 
     # matplotlib.image.imsave('foo.png', img[0, 65])
 

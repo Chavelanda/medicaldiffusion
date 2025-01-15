@@ -3,7 +3,7 @@
 # Set CUDA environment variables
 export PATH="/usr/local/cuda-11.1/bin:$PATH"
 export LD_LIBRARY_PATH="/usr/local/cuda-11.1/lib64:$LD_LIBRARY_PATH"
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 export CPATH="/usr/local/cuda-11.1/include:$CPATH"
 
 # Activate Python virtual environment
@@ -22,4 +22,6 @@ source .venv/bin/activate
 # python -m evaluation.calculate_fid model=fid dataset=allcts model.run_name="fid-allcts-vqgan-07-train-stunet-01" model.extractor="stunet" model.batch_size=20
 # python -m evaluation.calculate_fid model=fid dataset=allcts model.run_name="fid-allcts-vqgan-07-train-misfm-01" model.extractor="misfm" model.batch_size=15
 
-python -m evaluation.calculate_fid model=fid dataset=allcts model.run_name="fid-allcts-051-216-gen-med3d" model.extractor="med3d" model.batch_size=30
+# python -m evaluation.calculate_fid model=fid dataset=allcts model.run_name="fid-allcts-051-216-gen-med3d" model.extractor="med3d" model.batch_size=30 dataset.resample=1
+
+python -m evaluation.calculate_fid +experiment=fid-train-gen-baseline

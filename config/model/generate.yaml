@@ -26,6 +26,8 @@ n_samples: 10 # The number of samples to generate.
 m: 1      # How many latents are generated to get the farthest 
 train_latents: # Path to training latents
 
+cond_scale: 1 # The scale of the conditioning input.
+
 
 wandb_entity: ??? # The Weights & Biases entity (user or team) under which the project is located.
 wandb_project: ??? # The name of the Weights & Biases project.

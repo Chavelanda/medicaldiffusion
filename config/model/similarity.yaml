@@ -1,5 +1,5 @@
-num_workers: 32
-batch_size: 20
+num_workers: 8
+batch_size: 5
 
 checkpoint_path:  # Path to embedding model. If empty, calculates similarity on row data
 

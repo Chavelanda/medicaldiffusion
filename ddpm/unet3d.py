@@ -420,10 +420,7 @@ class Unet3D(nn.Module):
         # class conditioning
         self.use_class_cond = use_class_cond
         n_classes = cond_dim
-        self.class_cond_mlp = nn.Sequential(
-            nn.Linear(n_classes, time_dim),  # new layer to transform one-hot encoding to single value
-            nn.Linear(time_dim, time_dim)
-        ) if use_class_cond else None
+        self.class_cond_mlp = nn.Embedding(n_classes, time_dim) if use_class_cond else None
         
         # text conditioning        
         cond_dim = BERT_MODEL_DIM if use_bert_text_cond else time_dim if use_class_cond else cond_dim

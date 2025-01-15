@@ -12,9 +12,6 @@ import torch
 from ddpm import GaussianDiffusion, Unet3D
 from dataset.get_dataset import get_dataset
 
-# da eliminareee
-# from dataset import AllCTsDataset
- 
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
@@ -40,10 +37,12 @@ def run(cfg: DictConfig):
         use_class_cond = cfg.model.use_class_cond
         class_idx = cfg.model.class_idx
         random = False if class_idx is not None else True
-        print(f'Random class: {random}')
+        cond_scale = cfg.model.cond_scale
+        print(f'Random class: {random}')     
     else:
         cond_dim = None
         use_class_cond = False
+        cond_scale = 1
 
     channels=cfg.model.diffusion_num_channels
     d=cfg.model.diffusion_d
@@ -112,6 +111,7 @@ def run(cfg: DictConfig):
     print(f'Steps {steps}')
     print(f'Generated last step, last step batch size: {n_samples - (steps - 1)*ex_step}, {last_cond}')
     print(f'Generating for class idx {class_idx}')
+    print(f'Generating with conditional scale {cond_scale}')
     
     with torch.no_grad():
         for i in tqdm(range(steps), desc='Generating samples'):
@@ -123,7 +123,7 @@ def run(cfg: DictConfig):
             # class_names = ds.get_class_name_from_cond(cond) if conditioned else ['null' for _ in range(cfg.model.batch_size)]
             
             # Generate bs latents
-            latents = diffusion.p_sample_loop((batch_size, channels, d, h, w), cond=cond, cond_scale=1)
+            latents = diffusion.p_sample_loop((batch_size, channels, d, h, w), cond=cond, cond_scale=cond_scale)
             
             latents = (((latents + 1.0) / 2.0) * (diffusion.vqgan.codebook.embeddings.max() -
                                                   diffusion.vqgan.codebook.embeddings.min())) + diffusion.vqgan.codebook.embeddings.min()

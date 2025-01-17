@@ -80,7 +80,7 @@ class AllCTsDataset(Dataset):
 
         if self.conditioned:
             cond = entry['quality'] - 2
-            cond = torch.tensor([cond])
+            cond = torch.tensor(cond)
         else:
             cond = None
        
@@ -131,6 +131,7 @@ class AllCTsDataset(Dataset):
     def save(item_name, item, save_path, binarize=True):
         # Transform the item to numpy array
         if isinstance(item, torch.Tensor):
+            item = item.to('cpu')
             item = item.numpy()
 
         # Remove channel dimension if present
@@ -257,14 +258,8 @@ class AllCTsDatasetUpsampling(AllCTsDataset):
             #  min-max normalized to the range between -1 and 1
             img = (img - img.min()) / (img.max() - img.min()) * 2 - 1
             original_img = (original_img - original_img.min()) / (original_img.max() - original_img.min()) * 2 - 1
-
-        if self.conditioned:
-            cond = entry['quality'] - 2
-            cond = torch.tensor([cond])
-        else:
-            cond = None
        
-        return {'data': img, 'data_original': original_img, 'cond': cond}
+        return {'data': img, 'data_original': original_img}
 
 
 if __name__ == '__main__':

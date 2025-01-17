@@ -364,23 +364,48 @@ class FactorizedAttention(nn.Module):
 class Unet3D(nn.Module):
     def __init__(
         self,
-        dim,
-        cond_dim=None,
+        dim=32,
         out_dim=None,
         dim_mults=(1, 2, 4, 8),
-        channels=3,
+        in_channels=3,
+        sample_d=64,
+        sample_h=64,
+        sample_w=64,
         attn_heads=8,
         attn_dim_head=32,
         use_bert_text_cond=False,
         use_class_cond=False,
+        cond_dim=None,
         init_dim=None,
         init_kernel_size=7,
         use_sparse_linear_attn=True,
-        block_type='resnet',
-        resnet_groups=8
+        resnet_groups=8,
     ):
+        r"""
+        Args:
+            dim (`int`): The channel dimension after the initial convolution. Also the time embedding dimension divided by 4.
+            cond_dim (`int`, *optional*): The dimension of the conditioning input.
+            out_dim (`int`, *optional*): The number of output channels.
+            dim_mults (`tuple` of `int`, *optional*): The multipliers for the channel dimensions in the U-Net.
+            channels (`int`, *optional*): The number of input channels.
+            sample_d (`int`, *optional*): The depth of the input samples.
+            sample_h (`int`, *optional*): The height of the input samples.
+            sample_w (`int`, *optional*): The width of the input samples.
+            attn_heads (`int`, *optional*): The number of attention heads in spatial attention.
+            attn_dim_head (`int`, *optional*): The dimension of the attention heads.
+            use_bert_text_cond (`bool`, *optional*): Whether to use BERT text conditioning.
+            use_class_cond (`bool`, *optional*): Whether to use class conditioning.
+            init_dim (`int`, *optional*): The dimension of the initial convolution.
+            init_kernel_size (`int`, *optional*): The kernel size of the initial convolution.
+            use_sparse_linear_attn (`bool`, *optional*): Whether to use sparse linear attention.
+            resnet_groups (`int`, *optional*): The number of groups in the ResNet blocks.
+        """
+
         super().__init__()
-        self.channels = channels
+        self.in_channels = in_channels
+        self.sample_d = sample_d
+        self.sample_h = sample_h
+        self.sample_w = sample_w
 
         # relative positional encoding for one dim attention
         rotary_emb = RotaryEmbedding(min(32, attn_dim_head))
@@ -394,7 +419,7 @@ class Unet3D(nn.Module):
 
         init_padding = init_kernel_size // 2
         # lappala
-        self.init_conv = nn.Conv3d(channels, init_dim, (init_kernel_size, init_kernel_size, init_kernel_size), padding=(init_padding, init_padding, init_padding))
+        self.init_conv = nn.Conv3d(self.in_channels, init_dim, (init_kernel_size, init_kernel_size, init_kernel_size), padding=(init_padding, init_padding, init_padding))
 
         self.init_one_dim_attention = FactorizedAttention(init_dim, attn_heads, attn_dim_head, rotary_emb=rotary_emb)
 
@@ -475,7 +500,7 @@ class Unet3D(nn.Module):
                 Upsample(dim_in) if not is_last else nn.Identity()
             ]))
 
-        out_dim = default(out_dim, channels)
+        out_dim = default(out_dim, in_channels)
         self.final_conv = nn.Sequential(
             block_klass(dim * 2, dim),
             nn.Conv3d(dim, out_dim, 1)
@@ -533,10 +558,9 @@ class Unet3D(nn.Module):
         # classifier free guidance
         if self.has_cond:
             # embed cond
-            cond = torch.squeeze(self.class_cond_mlp(cond)) if self.use_class_cond else cond
+            cond = self.class_cond_mlp(cond) if self.use_class_cond else cond
 
             # mask cond with null_cond_prob
-            batch, device = x.shape[0], x.device
             mask = prob_mask_like((batch,), null_cond_prob, device=device)
             cond = torch.where(rearrange(mask, 'b -> b 1'), self.null_cond_emb, cond)
             

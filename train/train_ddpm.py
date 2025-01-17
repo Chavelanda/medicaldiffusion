@@ -2,44 +2,28 @@ import os
 
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
-import wandb
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, LearningRateMonitor
+from diffusers import DDPMScheduler
 
 import torch
-from torch.utils.data import DataLoader, DistributedSampler
-import torch.distributed as dist
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader
 
 from dataset.get_dataset import get_dataset
-from ddpm import Unet3D, GaussianDiffusion, Trainer
+from ddpm import Diffuser
+from ddpm.callbacks import SampleAndSaveCallback
 
 
-def setup(rank, world_size):
-    # Init distributed training
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
-
-
-def cleanup():
-    dist.destroy_process_group()
-
-
-class myDDP(torch.nn.parallel.DistributedDataParallel):
-   def __getattr__(self, name):
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.module, name)
-
-
-def train(rank, world_size, cfg: DictConfig):
-    # Setup distributed training
-    setup(rank, world_size)
+@hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
+def run(cfg: DictConfig):
+    pl.seed_everything(cfg.model.seed)
 
     results_folder = os.path.join(cfg.model.results_folder, cfg.dataset.name, cfg.model.results_folder_postfix, cfg.model.run_name)
+    os.makedirs(results_folder, exist_ok=True)
     print("Setting results_folder to {}".format(results_folder))
 
     # automatically adjust learning rate following https://arxiv.org/abs/1706.02677
-    batch_rate = world_size*cfg.model.gradient_accumulate_every
+    batch_rate = cfg.model.devices
     actual_batch_size = cfg.model.batch_size*batch_rate
     actual_lr = cfg.model.train_lr*batch_rate
     print(f'Batch size is {cfg.model.batch_size}\tActual batch size is {actual_batch_size}')
@@ -52,18 +36,11 @@ def train(rank, world_size, cfg: DictConfig):
 
         cfg.model.results_folder = results_folder
 
-    # Init wandb only in first process
-    if rank == 0:
-        wandb.init(project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, name=cfg.model.run_name)
-        wandb.config.update(OmegaConf.to_container(cfg.dataset))
-        wandb.config.update(OmegaConf.to_container(cfg.model))
-
-    train_dataset, val_dataset, _ = get_dataset(cfg)
-
-    # Define dataloaders
-    sampler = DistributedSampler(train_dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank())
-    dl = DataLoader(train_dataset, batch_size=cfg.model.batch_size, pin_memory=True, num_workers=cfg.model.num_workers, sampler=sampler)
-    val_dl = DataLoader(val_dataset, batch_size=cfg.model.batch_size, shuffle=False, pin_memory=True, num_workers=cfg.model.num_workers)
+    train_dataset, val_dataset, sampler = get_dataset(cfg)
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=cfg.model.batch_size,
+                                  num_workers=cfg.model.num_workers, sampler=sampler)
+    val_dataloader = DataLoader(val_dataset, batch_size=cfg.model.batch_size,
+                                shuffle=False, num_workers=cfg.model.num_workers)
 
     # Define conditioning parameters
     if cfg.model.cond:
@@ -73,69 +50,72 @@ def train(rank, world_size, cfg: DictConfig):
         cond_dim = None
         use_class_cond = False
 
-    unet3d = Unet3D(
-            dim=cfg.model.dim, # It is the channel dimension after init_conv.
+    # model checkpointing callbacks
+    callbacks = []
+    callbacks.append(ModelCheckpoint(monitor='val/loss',
+                     save_top_k=1, mode='min', dirpath=results_folder, filename='best_val-{epoch}-{step}'))
+    callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
+                     dirpath=results_folder, filename='train-{epoch}-{step}'))
+    # progress bar callback
+    callbacks.append(TQDMProgressBar(refresh_rate=50))
+    # log lr callback
+    callbacks.append(LearningRateMonitor(logging_interval='epoch'))
+    callbacks.append(SampleAndSaveCallback(results_folder=results_folder, sample_every_n_epochs=1, save_gif=True, save_image=True, save_func=train_dataset.save))
+
+    # Define noise scheduler for training
+    noise_scheduler = DDPMScheduler(num_train_timesteps=cfg.model.timesteps)
+    noise_scheduler.set_timesteps(num_inference_steps=cfg.model.timesteps)
+
+    # Resume training if needed, otherwise start from scratch
+    ckpt_path = cfg.model.load_milestone
+    if ckpt_path is not None:
+        assert os.path.isfile(ckpt_path), f'Checkpoint is not None, but it is not a file: {ckpt_path}'
+        diffuser = Diffuser.load_from_checkpoint(ckpt_path, noise_scheduler=noise_scheduler)
+        print(f'Will resume from the ckpt {ckpt_path}')
+    else:
+        diffuser = Diffuser(
+            vqvae_ckpt=cfg.model.vqvae_ckpt,
+            noise_scheduler=noise_scheduler,
+            in_channels=cfg.model.diffusion_num_channels,
+            sample_d=cfg.model.diffusion_d,
+            sample_h=cfg.model.diffusion_h,
+            sample_w=cfg.model.diffusion_w,
+            dim=cfg.model.dim,
             dim_mults=cfg.model.dim_mults,
-            channels=cfg.model.diffusion_num_channels,
-            cond_dim=cond_dim,
             use_class_cond=use_class_cond,
-        ).to(rank)
+            cond_dim=cond_dim,
+            null_cond_prob=cfg.model.null_cond_prob,
+            ema_decay=cfg.model.ema_decay,
+            loss=cfg.model.loss_type,
+            lr=cfg.model.train_lr,
+        )
+    
+    # create wandb logger
+    wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model=False)
 
-    diffusion = GaussianDiffusion(
-        unet3d,
-        vqgan_ckpt=cfg.model.vqgan_ckpt,
-        d=cfg.model.diffusion_d,
-        h=cfg.model.diffusion_h,
-        w=cfg.model.diffusion_w,
-        channels=cfg.model.diffusion_num_channels,
-        timesteps=cfg.model.timesteps,
-        # sampling_timesteps=cfg.model.sampling_timesteps,
-        loss_type=cfg.model.loss_type,
-    ).to(rank)
-
-    ddp_diffusion = myDDP(diffusion, device_ids=[rank], find_unused_parameters=True)
-
-    trainer = Trainer(
-        ddp_diffusion,
-        dl=dl,
-        val_dl=val_dl,
-        ema_decay=cfg.model.ema_decay,
-        train_batch_size=cfg.model.batch_size,
-        base_lr=cfg.model.base_lr,
-        train_lr=cfg.model.train_lr,
-        train_num_steps=cfg.model.train_num_steps,
-        gradient_accumulate_every=cfg.model.gradient_accumulate_every,
-        amp=cfg.model.amp,
-        save_and_sample_every_n_steps=cfg.model.save_and_sample_every_n_steps,
+    trainer = pl.Trainer(
+        accelerator=cfg.model.accelerator,
+        devices=cfg.model.devices,
+        accumulate_grad_batches=cfg.model.gradient_accumulate_every,
+        callbacks=callbacks,
+        max_steps=cfg.model.train_num_steps,
+        max_epochs=-1,
+        precision=cfg.model.precision,
+        logger=wandb_logger,
+        # strategy='ddp_find_unused_parameters_true',
+        log_every_n_steps=50,
         check_val_every_n_epoch=cfg.model.check_val_every_n_epoch,
-        results_folder=cfg.model.results_folder,
-        num_sample_rows=cfg.model.num_sample_rows,
-        num_workers=cfg.model.num_workers,
-        conditioned=cfg.model.cond,
-        null_cond_prob=cfg.model.null_cond_prob,
-        rank=rank,
     )
 
-    if cfg.model.load_milestone:
-        dist.barrier()
-        trainer.load(cfg.model.load_milestone, map_location={'cuda:%d' % 0: 'cuda:%d' % rank})
+    # Updating wandb configs
+    if trainer.global_rank == 0:
+        wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.dataset))
+        wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.model))
+        wandb_logger.experiment.config["ckpt_path"] = ckpt_path
 
-    if rank == 0:
-        trainer.train(log_fn=wandb.log)
-        wandb.finish()
-    else:
-        trainer.train()
+    torch.set_float32_matmul_precision('medium')
 
-    cleanup()
-
-
-@hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
-def run(cfg: DictConfig):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-
-    world_size = cfg.model.n_gpus
-    mp.spawn(train, args=(world_size, cfg), nprocs=world_size, join=True)
+    trainer.fit(diffuser, train_dataloader, val_dataloader)
 
 
 if __name__ == '__main__':

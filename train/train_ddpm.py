@@ -60,22 +60,20 @@ def run(cfg: DictConfig):
     callbacks.append(TQDMProgressBar(refresh_rate=50))
     # log lr callback
     callbacks.append(LearningRateMonitor(logging_interval='epoch'))
-    callbacks.append(SampleAndSaveCallback(results_folder=results_folder, sample_every_n_epochs=1, save_gif=True, save_image=True, save_func=train_dataset.save))
+    callbacks.append(SampleAndSaveCallback(results_folder=results_folder, sample_every_n_epochs=1, save_gif=True, save_image=False, save_func=train_dataset.save))
 
-    # Define noise scheduler for training
-    noise_scheduler = DDPMScheduler(num_train_timesteps=cfg.model.timesteps)
-    noise_scheduler.set_timesteps(num_inference_steps=cfg.model.timesteps)
+    noise_scheduler_class = DDPMScheduler
 
     # Resume training if needed, otherwise start from scratch
     ckpt_path = cfg.model.load_milestone
     if ckpt_path is not None:
         assert os.path.isfile(ckpt_path), f'Checkpoint is not None, but it is not a file: {ckpt_path}'
-        diffuser = Diffuser.load_from_checkpoint(ckpt_path, noise_scheduler=noise_scheduler)
+        diffuser = Diffuser.load_from_checkpoint(ckpt_path, noise_scheduler=noise_scheduler_class)
         print(f'Will resume from the ckpt {ckpt_path}')
     else:
         diffuser = Diffuser(
             vqvae_ckpt=cfg.model.vqvae_ckpt,
-            noise_scheduler=noise_scheduler,
+            noise_scheduler_class=noise_scheduler_class,
             in_channels=cfg.model.diffusion_num_channels,
             sample_d=cfg.model.diffusion_d,
             sample_h=cfg.model.diffusion_h,
@@ -88,6 +86,7 @@ def run(cfg: DictConfig):
             ema_decay=cfg.model.ema_decay,
             loss=cfg.model.loss_type,
             lr=cfg.model.train_lr,
+            training_timesteps=cfg.model.timesteps,
         )
     
     # create wandb logger
@@ -115,7 +114,7 @@ def run(cfg: DictConfig):
 
     torch.set_float32_matmul_precision('medium')
 
-    trainer.fit(diffuser, train_dataloader, val_dataloader)
+    trainer.fit(diffuser, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
 
 
 if __name__ == '__main__':

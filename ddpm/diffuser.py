@@ -19,7 +19,7 @@ from ddpm.utils import video_tensor_to_gif
 class Diffuser(pl.LightningModule):
     def __init__(self, 
                 vqvae_ckpt,
-                noise_scheduler, 
+                noise_scheduler_class, 
                 in_channels=1,
                 sample_d=64,
                 sample_h=64,
@@ -38,14 +38,16 @@ class Diffuser(pl.LightningModule):
                 update_ema_every_n_steps=1,
                 loss='l2', 
                 lr=1e-4,
-                results_folder=None,):
+                results_folder=None,
+                training_timesteps=300):
         super().__init__()
         self.vqvae = VQVAE_Upsampling.load_from_checkpoint(vqvae_ckpt)
         self.vqvae.eval()
         self.vqvae.freeze()
 
         self.unet = self.setup_unet(in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups)
-        self.noise_scheduler = noise_scheduler
+        self.noise_scheduler = noise_scheduler_class(num_train_timesteps=training_timesteps)
+        self.training_timesteps = training_timesteps
 
         self.ema_model = AveragedModel(self.unet, 
                                        multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(ema_decay),
@@ -132,7 +134,7 @@ class Diffuser(pl.LightningModule):
     def sample_with_random_cond(self):
         cond = torch.randint(0, self.cond_dim, (1,), device=self.device) if self.use_class_cond else None
         print('\nSampling with condition:', cond)
-        return self.sample(batch_size=1, num_inference_steps=self.noise_scheduler.num_inference_steps, cond=cond)
+        return self.sample(batch_size=1, num_inference_steps=self.training_timesteps, cond=cond)
 
     def predict_step(self, batch_size, num_inference_steps=1000, cond=None, cond_scale=1.):
         return self.sample(batch_size=batch_size, 
@@ -144,13 +146,14 @@ class Diffuser(pl.LightningModule):
         return optimizer
 
     @torch.no_grad()
-    def sample(
+    def sample_latent(
         self,
         batch_size: int = 1,
         generator: Optional[torch.Generator] = None,
         eta: float = 0.0,
         num_inference_steps: int = 50,
         cond: torch.Tensor = None,
+        cond_scale = None,
     ) -> torch.Tensor:
         r"""
         Args:
@@ -189,9 +192,25 @@ class Diffuser(pl.LightningModule):
         for t in tqdm(self.noise_scheduler.timesteps):
             latent_model_input = self.noise_scheduler.scale_model_input(latents, t)
             # predict the noise residual
-            noise_prediction = self.ema_model(latent_model_input, t.expand(batch_size), cond=cond)
+            if cond_scale is not None:
+                noise_prediction = self.ema_model.module.forward_with_cond_scale(latent_model_input, t.expand(batch_size), cond=cond, cond_scale=cond_scale)
+            else:    
+                noise_prediction = self.ema_model(latent_model_input, t.expand(batch_size), cond=cond)
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.noise_scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
+
+        return latents
+
+    @torch.no_grad()
+    def sample(self,
+               batch_size: int = 1,
+               generator: Optional[torch.Generator] = None,
+               eta: float = 0.0,
+               num_inference_steps: int = 50,
+               cond: torch.Tensor = None,
+               cond_scale = None,):
+        
+        latents = self.sample_latent(batch_size=batch_size, generator=generator, eta=eta, num_inference_steps=num_inference_steps, cond=cond, cond_scale=cond_scale)
 
         # decode the image latents with the VAE
         samples = self.vqvae.decode(latents, quantize=True)

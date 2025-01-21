@@ -1,23 +1,18 @@
-gpus: 0 # The GPU device to use for computation.
+seed: 1234 # The random seed for reproducibility.
+device: 'cuda'
 batch_size: 1 # The number of samples per batch.
 data_folder: data # The data directory. Data will be saved in data_folder + run_name
 
-# Denoiser and Gaussian diffusion parameters
-vqgan_ckpt: ??? # The checkpoint file for the VQGAN model.
-diffusion_d: ???
-diffusion_h: ???
-diffusion_w: ???
-diffusion_num_channels: ??? # The number of channels in the images before the diffusion process.
-dim: 32
-dim_mults: # The dimension multipliers for the U-Net model.
-timesteps: 300 # The number of timesteps for the diffusion process.
-
-milestone: ??? # The milestone file to load the model state from.
+milestone: ??? # The milestone file to load the model state and parameters from.
 
 # Generation parameters
+timesteps: 300 # The number of timesteps for the diffusion process.
+
 cond: True # A boolean indicating whether the model is conditioned on some input.
 use_class_cond: True
+cond_scale: 1 # The scale of the conditioning input.
 class_idx:  # The class index for conditioning, if applicable. Leave empty for random conditioning
+
 name_prefix:  # The prefix for the name of the output files.
 
 n_samples: 10 # The number of samples to generate.
@@ -25,9 +20,6 @@ n_samples: 10 # The number of samples to generate.
 # Filtered generation parameters (1 for normal generation)
 m: 1      # How many latents are generated to get the farthest 
 train_latents: # Path to training latents
-
-cond_scale: 1 # The scale of the conditioning input.
-
 
 wandb_entity: ??? # The Weights & Biases entity (user or team) under which the project is located.
 wandb_project: ??? # The name of the Weights & Biases project.

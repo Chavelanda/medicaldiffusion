@@ -87,13 +87,11 @@ class AllCTsDataset(Dataset):
         return {'data': img, 'cond': cond}
     
     def get_cond(self, batch_size=1, random=True, class_idx=None):
-        # Tensor of zeros with one in a random position for each element of the batch
-        cond = torch.zeros((batch_size, self.cond_dim))
         if random:
-            cond = torch.randint(0,self.cond_dim, (batch_size, 1))
+            cond = torch.randint(0,self.cond_dim, (batch_size,))
         else:
             assert class_idx is not None, 'If random is False, class_idx must be specified'
-            cond = torch.randint(class_idx, class_idx+1, (batch_size, 1))
+            cond = torch.randint(class_idx, class_idx+1, (batch_size,))
         return cond
     
     def get_class_name_from_cond(self, cond):

@@ -8,14 +8,14 @@ import numpy as np
 from tqdm import tqdm
 import wandb
 import torch
+from diffusers import DDPMScheduler
 
-from ddpm import GaussianDiffusion, Unet3D
+from ddpm import Diffuser
 from dataset.get_dataset import get_dataset
 
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
-    torch.cuda.set_device(cfg.model.gpus)
     with open_dict(cfg):
         cfg.model.data_folder = os.path.join(
             cfg.model.data_folder, cfg.model.run_name)
@@ -30,53 +30,23 @@ def run(cfg: DictConfig):
 
     ds, *_ = get_dataset(cfg) 
 
+    device = cfg.model.device
+
     # Define conditioning parameters
     conditioned = cfg.model.cond
     if conditioned:
-        cond_dim = ds.cond_dim 
-        use_class_cond = cfg.model.use_class_cond
         class_idx = cfg.model.class_idx
         random = False if class_idx is not None else True
         cond_scale = cfg.model.cond_scale
         print(f'Random class: {random}')     
-    else:
-        cond_dim = None
-        use_class_cond = False
-        cond_scale = 1
 
-    channels=cfg.model.diffusion_num_channels
-    d=cfg.model.diffusion_d
-    h=cfg.model.diffusion_h
-    w=cfg.model.diffusion_w
+    # Define noise scheduler for inference
+    noise_scheduler_class = DDPMScheduler
 
-    model = Unet3D(
-            dim=cfg.model.dim,
-            dim_mults=cfg.model.dim_mults,
-            channels=channels,
-            cond_dim=cond_dim,
-            use_class_cond=use_class_cond,
-        ).cuda()
-    
-    diffusion = GaussianDiffusion(
-        model,
-        vqgan_ckpt=cfg.model.vqgan_ckpt,
-        d=d,
-        h=h,
-        w=w,
-        channels=channels,
-        timesteps=cfg.model.timesteps,
-    ).cuda()
-
-    data = torch.load(cfg.model.milestone)
-    
-    # Remove 'module.' prefix. Necessary if trained with data parallel
-    ema_state_dict = OrderedDict()
-    for k, v in data['ema'].items():
-        new_key = k.replace("module.", "")  
-        ema_state_dict[new_key] = v
-    
-    diffusion.load_state_dict(ema_state_dict)
-    
+    diffuser = Diffuser.load_from_checkpoint(cfg.model.milestone, noise_scheduler_class=noise_scheduler_class)
+    diffuser.eval()
+    diffuser = diffuser.to(device)
+  
     # Create metadata csv if not existing
     name_prefix = cfg.model.name_prefix if cfg.model.name_prefix else ''
     metadata_path = os.path.join(cfg.model.data_folder, 'metadata.csv')
@@ -104,7 +74,7 @@ def run(cfg: DictConfig):
 
     assert (m == 1 and cfg.model.train_latents is None) or (m > 1 and cfg.model.train_latents), "If m > 1, path to train latents must be specified. Otherwise train_latents must be left empty!"
     if m > 1:
-        train_latents = torch.from_numpy(np.load(cfg.model.train_latents)).float().cuda()
+        train_latents = torch.from_numpy(np.load(cfg.model.train_latents)).float().to(device)
 
     print(f'Number of samples to generate: {n_samples}')
     print(f'Batch size, m, generated per batch: {batch_size}, {m}, {ex_step}')
@@ -118,18 +88,14 @@ def run(cfg: DictConfig):
             if i == steps - 1:
                 batch_size = last_cond
 
-            cond = ds.get_cond(batch_size=batch_size, random=random, class_idx=class_idx).cuda() if conditioned else None
-            # print('COND',cond)
-            # class_names = ds.get_class_name_from_cond(cond) if conditioned else ['null' for _ in range(cfg.model.batch_size)]
-            
+            cond = ds.get_cond(batch_size=batch_size, random=random, class_idx=class_idx).to(device) if conditioned else None
+           
             # Generate bs latents
-            latents = diffusion.p_sample_loop((batch_size, channels, d, h, w), cond=cond, cond_scale=cond_scale)
+            latents = diffuser.sample_latent(batch_size=batch_size, num_inference_steps=cfg.model.timesteps, cond=cond, cond_scale=cond_scale)
             
-            latents = (((latents + 1.0) / 2.0) * (diffusion.vqgan.codebook.embeddings.max() -
-                                                  diffusion.vqgan.codebook.embeddings.min())) + diffusion.vqgan.codebook.embeddings.min()
-            
+            d, h, w = latents.shape[-3:]
             # Quantize latents
-            vq_output = diffusion.vqgan.codebook(latents)
+            vq_output = diffuser.vqvae.codebook(latents)
             latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, d, h, w))
 
             if m > 1:
@@ -169,7 +135,7 @@ def run(cfg: DictConfig):
             encoding = encodings[torch.arange(encodings.shape[0]), selected_idx]
             
             # Decode the latent
-            samples = diffusion.vqgan.decode(encoding, quantize=False).cpu()
+            samples = diffuser.vqvae.decode(encoding, quantize=False).cpu()
 
             # Save the images
             for j, sample in enumerate(samples):

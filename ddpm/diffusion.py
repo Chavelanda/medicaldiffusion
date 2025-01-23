@@ -11,7 +11,7 @@ from einops_exts import check_shape
 
 from ddpm.utils import is_list_str, exists, default, unnormalize_img, normalize_img
 from ddpm.text import tokenize, bert_embed
-from vq_gan_3d.model.vqvae_upsampling import VQVAE_Upsampling
+from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
 
 
 def extract(a, t, x_shape):
@@ -60,7 +60,7 @@ class GaussianDiffusion(nn.Module):
         self.denoise_fn = denoise_fn
 
         if vqgan_ckpt:
-            self.vqgan = VQVAE_Upsampling.load_from_checkpoint(vqgan_ckpt).cuda()
+            self.vqgan = VQVAEUpsampling.load_from_checkpoint(vqgan_ckpt).cuda()
             self.vqgan.eval()
         else:
             self.vqgan = None
@@ -200,7 +200,7 @@ class GaussianDiffusion(nn.Module):
         batch_size = cond.shape[0] if exists(cond) else batch_size
         _sample = self.p_sample_loop((batch_size, self.channels, self.d, self.h, self.w), cond=cond, cond_scale=cond_scale)
 
-        if isinstance(self.vqgan, VQVAE_Upsampling):
+        if isinstance(self.vqgan, VQVAEUpsampling):
             # denormalize TODO: Remove eventually
             _sample = (((_sample + 1.0) / 2.0) * (self.vqgan.codebook.embeddings.max() -
                                                   self.vqgan.codebook.embeddings.min())) + self.vqgan.codebook.embeddings.min()
@@ -301,7 +301,7 @@ class GaussianDiffusion(nn.Module):
         return loss
 
     def forward(self, x, *args, **kwargs):
-        if isinstance(self.vqgan, VQVAE_Upsampling):
+        if isinstance(self.vqgan, VQVAEUpsampling):
             with torch.no_grad():
                 x = self.vqgan.encode(
                     x, quantize=False, include_embeddings=True)

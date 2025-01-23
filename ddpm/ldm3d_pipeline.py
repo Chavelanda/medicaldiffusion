@@ -4,7 +4,7 @@ from typing import Optional, Tuple, Union
 from diffusers import DDPMScheduler, DiffusionPipeline, ImagePipelineOutput
 import torch
 
-from vq_gan_3d.model.vqvae_upsampling import VQVAE_Upsampling 
+from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling 
 from ddpm.unet3d import Unet3D
 
 import matplotlib.pyplot as plt
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     
     unet.load_state_dict(denoise_fn_state_dict)
 
-    vqvae = VQVAE_Upsampling.load_from_checkpoint('checkpoints/vq_gan_3d/AllCTs-Upsampling/allcts-051-512-up-only-recon-ae/best_val-epoch=378-step=137577.ckpt').to('cuda')
+    vqvae = VQVAEUpsampling.load_from_checkpoint('checkpoints/vq_gan_3d/AllCTs-Upsampling/allcts-051-512-up-only-recon-ae/best_val-epoch=378-step=137577.ckpt').to('cuda')
 
     scheduler = DDPMScheduler(num_train_timesteps=300)
 

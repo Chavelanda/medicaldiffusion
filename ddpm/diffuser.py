@@ -10,7 +10,7 @@ from torch.optim.swa_utils import AveragedModel
 import pytorch_lightning as pl
 from diffusers.training_utils import EMAModel
 
-from vq_gan_3d.model.vqvae_upsampling import VQVAE_Upsampling
+from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
 from ddpm.unet3d import Unet3D
 from ddpm.ldm3d_pipeline import LDM3DPipeline
 from ddpm.utils import video_tensor_to_gif
@@ -41,7 +41,7 @@ class Diffuser(pl.LightningModule):
                 results_folder=None,
                 training_timesteps=300):
         super().__init__()
-        self.vqvae = VQVAE_Upsampling.load_from_checkpoint(vqvae_ckpt)
+        self.vqvae = VQVAEUpsampling.load_from_checkpoint(vqvae_ckpt)
         self.vqvae.eval()
         self.vqvae.freeze()
 

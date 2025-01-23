@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from vq_gan_3d.model.vqgan import VQGAN, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d
 
 
-class VQVAE_Upsampling(VQGAN):
+class VQVAEUpsampling(VQGAN):
     # The idea is that in each setup the decoder is modified in a different way.
     # To modify the decoder I substitute the last convolution eith a sequential layer 
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
@@ -202,61 +202,6 @@ class ResidualSamePadConv3d(nn.Module):
         return x + self.conv(x)
 
 
-class SequentialSamePadConv3D(nn.Module):
-    
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=True, padding_type='replicate'):
-        super().__init__()
-        if isinstance(kernel_size, int):
-            kernel_size = (kernel_size,) * 3
-        if isinstance(stride, int):
-            stride = (stride,) * 3
-
-        # assumes that the input shape is divisible by stride
-        total_pad = tuple([k - s for k, s in zip(kernel_size, stride)])
-        pad_input = []
-        for p in total_pad[::-1]:  # reverse since F.pad starts from last dim
-            pad_input.append((p // 2 + p % 2, p // 2))
-        pad_input = sum(pad_input, tuple())
-        self.pad_input = pad_input
-        self.padding_type = padding_type
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.bias = bias
-
-        # Initialize the convolutional weights and biases
-        self.weights = nn.Parameter(torch.randn(out_channels, in_channels, *kernel_size))
-        if bias:
-            self.biases = nn.Parameter(torch.randn(out_channels))
-        else:
-            self.biases = None
-
-    def forward(self, x):
-        output = torch.zeros((x.shape[0], self.out_channels, *x.shape[2:]), device=x.device, dtype=x.dtype)
-        x = F.pad(x, self.pad_input, mode=self.padding_type)
-
-        # Compute output channels sequentially
-        for out_c in range(self.out_channels):
-            temp = torch.zeros(x.shape[0], 1, *output.shape[2:], device=x.device, dtype=x.dtype)
-            for in_c in range(self.in_channels):
-                temp += F.conv3d(
-                    x[:, in_c:in_c+1, :, :, :],  # Single input channel
-                    self.weights[out_c:out_c+1, in_c:in_c+1, :, :, :],  # Corresponding weights
-                    bias=None,
-                    stride=self.stride,
-                    padding=0
-                )
-            # Add bias
-            if self.bias:
-                temp += self.biases[out_c]
-
-            output[:, out_c, :, :, :] = temp.squeeze(1)
-        
-        return output
-
-
 
 if __name__ == '__main__':
     print('start')
@@ -294,7 +239,7 @@ if __name__ == '__main__':
     }
     cfg = OmegaConf.create(cfg_dict)
 
-    model = VQVAE_Upsampling(cfg, 456, 352, 512, 'super')
+    model = VQVAEUpsampling(cfg, 456, 352, 512, 'super')
 
     summary(model, [(1, 192, 148, 216), (1, 456, 352, 512)], device='cpu', depth=10)
 

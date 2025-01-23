@@ -9,7 +9,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, Learni
 import torch
 from torch.utils.data import DataLoader
 
-from vq_gan_3d.model.vqvae_upsampling import VQVAE_Upsampling
+from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
 from dataset.get_dataset import get_dataset
 
 
@@ -48,7 +48,7 @@ def run(cfg: DictConfig):
         cfg.dataset.w = train_dataset.w
 
 
-    model = VQVAE_Upsampling(cfg, original_d=train_dataset.original_d, original_h=train_dataset.original_h, original_w=train_dataset.original_w, architecture=cfg.model.architecture, architecture_down=cfg.model.architecture_down)
+    model = VQVAEUpsampling(cfg, original_d=train_dataset.original_d, original_h=train_dataset.original_h, original_w=train_dataset.original_w, architecture=cfg.model.architecture, architecture_down=cfg.model.architecture_down)
 
     # model checkpointing callbacks
     callbacks = []
@@ -65,7 +65,7 @@ def run(cfg: DictConfig):
     ckpt_path = None
     if cfg.model.resume and os.path.isfile(cfg.model.checkpoint_path):
         assert os.path.isfile(cfg.model.checkpoint_path), f'Resume is {cfg.model.resume} but {cfg.model.checkpoint_path} is not a checkpoint file!'
-        model = VQVAE_Upsampling.load_from_checkpoint(cfg.model.checkpoint_path)
+        model = VQVAEUpsampling.load_from_checkpoint(cfg.model.checkpoint_path)
         ckpt_path = cfg.model.checkpoint_path
         print(f'Will resume from the recent ckpt {ckpt_path}')
         

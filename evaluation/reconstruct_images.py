@@ -9,7 +9,7 @@ from tqdm import tqdm
 from dataset.get_dataset import get_dataset
 import dataset.utils as utils
 from vq_gan_3d.model import VQGAN
-from vq_gan_3d.model.vqvae_upsampling import VQVAE_Upsampling
+from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
@@ -24,7 +24,7 @@ def run(cfg: DictConfig):
     assert os.path.isfile(cfg.model.checkpoint_path), "Checkpoint file for VQGAN must be specified"
     
     ckpt_path = cfg.model.checkpoint_path
-    vqgan = VQVAE_Upsampling.load_from_checkpoint(ckpt_path).to(accelerator)
+    vqgan = VQVAEUpsampling.load_from_checkpoint(ckpt_path).to(accelerator)
     vqgan.eval()
 
     save_path = cfg.dataset.save_path

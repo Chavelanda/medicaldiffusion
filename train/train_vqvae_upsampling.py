@@ -47,9 +47,6 @@ def run(cfg: DictConfig):
         cfg.dataset.h = train_dataset.h
         cfg.dataset.w = train_dataset.w
 
-
-    model = VQVAEUpsampling(cfg, original_d=train_dataset.original_d, original_h=train_dataset.original_h, original_w=train_dataset.original_w, architecture=cfg.model.architecture, architecture_down=cfg.model.architecture_down)
-
     # model checkpointing callbacks
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
@@ -68,6 +65,8 @@ def run(cfg: DictConfig):
         model = VQVAEUpsampling.load_from_checkpoint(cfg.model.checkpoint_path)
         ckpt_path = cfg.model.checkpoint_path
         print(f'Will resume from the recent ckpt {ckpt_path}')
+    else:
+        model = VQVAEUpsampling(cfg, original_d=train_dataset.original_d, original_h=train_dataset.original_h, original_w=train_dataset.original_w, architecture=cfg.model.architecture, architecture_down=cfg.model.architecture_down)
         
     # create wandb logger
     wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model=False)

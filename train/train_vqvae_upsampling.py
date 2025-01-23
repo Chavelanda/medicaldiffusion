@@ -94,7 +94,7 @@ def run(cfg: DictConfig):
     torch.set_float32_matmul_precision('medium')
 
     try:
-        trainer.fit(model, train_dataloader, val_dataloader)
+        trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
     except Exception as error:
         print("An exception occurred:", error)
     finally:

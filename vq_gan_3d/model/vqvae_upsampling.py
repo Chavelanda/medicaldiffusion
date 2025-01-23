@@ -36,6 +36,8 @@ class VQVAEUpsampling(VQGAN):
         setup_dict[self.architecture_down]()
         setup_dict[self.architecture]()
 
+        self.save_hyperparameters()
+
     def setup_up(self):
         # As last layer I do a deterministic trilinear upsampling
         conv = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)

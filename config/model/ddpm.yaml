@@ -27,7 +27,7 @@ loss_type: l1 # L1 or L2
 train_num_steps: 100001 # total training steps
 ema_decay: 0.995 # exponential moving average decay
 
-check_val_every_n_epoch: 5
+check_val_every_n_epoch: 10
 
 cond: True # Conditional training?
 use_class_cond: True # If true, one-hot class labels are embedded and used as conditioning. If false, condition is used as it is.

@@ -78,18 +78,22 @@ class Diffuser(pl.LightningModule):
     def setup_unet(self, **kwargs):
         return Unet3D(**kwargs)
 
-    def forward(self, x, cond=None, use_ema=False):
+    def forward(self, x, cond=None, use_ema=False, timesteps=None):
         # encode the image
         x = self.vqvae.encode(x, quantize=False, include_embeddings=True)
+
+        # normalize the image
+        x = ((x - self.vqvae.codebook.embeddings.min()) /
+                     (self.vqvae.codebook.embeddings.max() -
+                      self.vqvae.codebook.embeddings.min())) * 2.0 - 1.0
 
         # sample the noise
         noise = torch.randn_like(x)
 
         # sample a random timestep for each image
-        batch_size = x.shape[0]
-        timesteps = torch.randint(
-            0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device
-        ).long()
+        if timesteps is None:
+            batch_size = x.shape[0]
+            timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device).long()
 
         # add noise to the clean images according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -101,15 +105,14 @@ class Diffuser(pl.LightningModule):
         else:
             noise_prediction = self.unet(noisy_x, timesteps, cond, self.null_cond_prob)
 
-        # compute loss
-        loss = self.loss(noise_prediction, noise)
-
-        return loss
+        return noise_prediction, noise
     
     def training_step(self, batch):
         x = batch['data']
         cond = batch['cond'] if self.use_class_cond else None
-        loss = self(x, cond)
+        
+        noise_prediction, noise = self(x, cond)
+        loss = self.loss(noise_prediction, noise)
 
         self.log_dict({'train/loss': loss}, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
 
@@ -124,22 +127,21 @@ class Diffuser(pl.LightningModule):
     def validation_step(self, batch):
         x = batch['data']
         cond = batch['cond'] if self.use_class_cond else None
+        batch_size = x.shape[0]
 
-        loss = self(x, cond, use_ema=True)
+        timesteps = torch.arange(self.noise_scheduler.config.num_train_timesteps, device=x.device).long().expand(batch_size, -1).T
+        outputs = [self(x, cond, use_ema=True, timesteps=t) for t in timesteps]
+        loss_l1 = torch.stack([F.l1_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
+        loss_l2 = torch.stack([F.mse_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
 
-        self.log_dict({'val/loss': loss}, prog_bar=True, sync_dist=True)
+        self.log_dict({'val/loss_l1': loss_l1, 'val/loss_l2': loss_l2}, prog_bar=True, sync_dist=True, batch_size=batch_size)
 
-        return loss
+        return loss_l1, loss_l2
     
     def sample_with_random_cond(self):
         cond = torch.randint(0, self.cond_dim, (1,), device=self.device) if self.use_class_cond else None
         print('\nSampling with condition:', cond)
         return self.sample(batch_size=1, num_inference_steps=self.training_timesteps, cond=cond)
-
-    def predict_step(self, batch_size, num_inference_steps=1000, cond=None, cond_scale=1.):
-        return self.sample(batch_size=batch_size, 
-                      num_inference_steps=num_inference_steps, 
-                      cond=cond)
     
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.unet.parameters(), lr=self.lr)
@@ -211,6 +213,9 @@ class Diffuser(pl.LightningModule):
                cond_scale = None,):
         
         latents = self.sample_latent(batch_size=batch_size, generator=generator, eta=eta, num_inference_steps=num_inference_steps, cond=cond, cond_scale=cond_scale)
+
+        # denormalize the latents
+        latents = (((latents + 1.0) / 2.0) * (self.vqvae.codebook.embeddings.max() - self.vqvae.codebook.embeddings.min())) + self.vqvae.codebook.embeddings.min()
 
         # decode the image latents with the VAE
         samples = self.vqvae.decode(latents, quantize=True)

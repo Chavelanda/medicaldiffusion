@@ -1,0 +1,24 @@
+seed: 1234
+batch_size: 1
+num_workers: 16
+
+accelerator: cuda
+devices: 2
+accumulate_grad_batches: 1
+default_root_dir: checkpoints/vq_gan_3d
+default_root_dir_postfix: ''
+resume: False
+
+checkpoint_path: ???
+variance: 0.1
+
+max_steps: 50000
+max_epochs: -1
+precision: 16-mixed
+gradient_clip_val: 1.0
+
+lr: 1e-5
+
+wandb_entity: ???
+wandb_project: ???
+run_name: ???

@@ -56,9 +56,6 @@ class Diffuser(pl.LightningModule):
 
         self.pipeline = LDM3DPipeline(self.ema_model.module, self.noise_scheduler, self.vqvae)
 
-        
-        self.ema_model.to(self.device)
-
         self.use_class_cond = use_class_cond
         self.null_cond_prob = null_cond_prob
         self.cond_dim = cond_dim
@@ -73,7 +70,7 @@ class Diffuser(pl.LightningModule):
 
         self.results_folder = results_folder
 
-        self.save_hyperparameters(ignore=['noise_scheduler'])
+        self.save_hyperparameters()
 
     def setup_unet(self, **kwargs):
         return Unet3D(**kwargs)
@@ -139,6 +136,8 @@ class Diffuser(pl.LightningModule):
         return loss_l1, loss_l2
     
     def sample_with_random_cond(self):
+        self.unet.eval()
+        self.ema_model.eval()
         cond = torch.randint(0, self.cond_dim, (1,), device=self.device) if self.use_class_cond else None
         print('\nSampling with condition:', cond)
         return self.sample(batch_size=1, num_inference_steps=self.training_timesteps, cond=cond)

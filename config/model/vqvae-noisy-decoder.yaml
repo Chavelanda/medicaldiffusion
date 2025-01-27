@@ -10,7 +10,7 @@ default_root_dir_postfix: ''
 resume: False
 
 checkpoint_path: ???
-variance: 0.1
+variance: [0.1, 0.4]
 
 max_steps: 50000
 max_epochs: -1

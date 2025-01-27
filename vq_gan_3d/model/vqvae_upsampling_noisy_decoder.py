@@ -6,7 +6,7 @@ from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
 
 class VQVAEUpsamplingNoisyDecoder(VQVAEUpsampling):
 
-    def __init__(self, *args, variance=0.1, **kwargs):
+    def __init__(self, *args, variance=[0.1, 0.4], **kwargs):
         super().__init__(*args, **kwargs)
 
         self.variance = variance
@@ -36,7 +36,8 @@ class VQVAEUpsamplingNoisyDecoder(VQVAEUpsampling):
         z = self.pre_vq_conv(self.encoder(x))
 
         # Add noise to the latents (KEY MODEL MODIFICATION)
-        z = z + torch.randn_like(z) * self.variance
+        var = self.variance[0] + (self.variance[1] - self.variance[0]) * torch.rand(1, device=self.device).item()
+        z = z + torch.randn_like(z) * var
 
         vq_output = self.codebook(z)
         x_recon = self.decoder(self.post_vq_conv(vq_output['embeddings']))

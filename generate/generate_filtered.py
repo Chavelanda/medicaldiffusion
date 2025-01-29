@@ -93,49 +93,51 @@ def run(cfg: DictConfig):
             # Generate bs latents
             latents = diffuser.sample_latent(batch_size=batch_size, num_inference_steps=cfg.model.timesteps, cond=cond, cond_scale=cond_scale)
             
-            d, h, w = latents.shape[-3:]
-            # Quantize latents
-            vq_output = diffuser.vqvae.codebook(latents)
-            latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, d, h, w))
+            samples = diffuser.vqvae.decode(latents, quantize=True).cpu()
 
-            if m > 1:
-                # Compute distance with train latents
-                distance_matrix = torch.cdist(latents, train_latents, p=2.0, compute_mode='use_mm_for_euclid_dist_if_necessary')
+            # d, h, w = latents.shape[-3:]
+            # # Quantize latents
+            # vq_output = diffuser.vqvae.codebook(latents)
+            # latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, d, h, w))
 
-                # # FARE MAESTRIE PER CAPIRE DI CHE QS SONO I NEAREST LATENTS
-                # print('WOOOOOOOOOOOOOOOO')
-                # print('Shape latents ', latents.shape)
-                # print('Shape distance matrix ', distance_matrix.shape)
-                # print('shape index min ', torch.argmin(distance_matrix, axis=1).shape)
-                # min_distance_matrix = torch.min(distance_matrix, axis=1)
-                # print('Min distance tuple ', min_distance_matrix)
-                # sorted_idx = torch.argsort(min_distance_matrix[0])
-                # print('Sorted idx for min distance tuple ', sorted_idx)
-                # sorted_min_distance_indexes = min_distance_matrix[1][sorted_idx]
-                # print('Sorted min distance indexes ', sorted_min_distance_indexes)
+            # if m > 1:
+            #     # Compute distance with train latents
+            #     distance_matrix = torch.cdist(latents, train_latents, p=2.0, compute_mode='use_mm_for_euclid_dist_if_necessary')
 
-                # dataset = AllCTsDataset(
-                #     root_dir='./data/allcts-global-128/',
-                #     metadata_name='metadata.csv',
-                #     split='train-val',
-                #     binarize=True,
-                # )
+            #     # # FARE MAESTRIE PER CAPIRE DI CHE QS SONO I NEAREST LATENTS
+            #     # print('WOOOOOOOOOOOOOOOO')
+            #     # print('Shape latents ', latents.shape)
+            #     # print('Shape distance matrix ', distance_matrix.shape)
+            #     # print('shape index min ', torch.argmin(distance_matrix, axis=1).shape)
+            #     # min_distance_matrix = torch.min(distance_matrix, axis=1)
+            #     # print('Min distance tuple ', min_distance_matrix)
+            #     # sorted_idx = torch.argsort(min_distance_matrix[0])
+            #     # print('Sorted idx for min distance tuple ', sorted_idx)
+            #     # sorted_min_distance_indexes = min_distance_matrix[1][sorted_idx]
+            #     # print('Sorted min distance indexes ', sorted_min_distance_indexes)
 
-                # print(dataset.df.iloc[sorted_min_distance_indexes.cpu(), :])
+            #     # dataset = AllCTsDataset(
+            #     #     root_dir='./data/allcts-global-128/',
+            #     #     metadata_name='metadata.csv',
+            #     #     split='train-val',
+            #     #     binarize=True,
+            #     # )
 
-                # return None
-                # # FINITE MAESTRIE
+            #     # print(dataset.df.iloc[sorted_min_distance_indexes.cpu(), :])
 
-                # Select farthest latent every m samples
-                nn, _ = torch.min(distance_matrix.view((-1, m, train_latents.shape[0])), 2)
-                selected_idx = torch.argmax(nn, dim=1)
-            else:
-                selected_idx = 0
+            #     # return None
+            #     # # FINITE MAESTRIE
+
+            #     # Select farthest latent every m samples
+            #     nn, _ = torch.min(distance_matrix.view((-1, m, train_latents.shape[0])), 2)
+            #     selected_idx = torch.argmax(nn, dim=1)
+            # else:
+            #     selected_idx = 0
             
-            encoding = encodings[torch.arange(encodings.shape[0]), selected_idx]
+            # encoding = encodings[torch.arange(encodings.shape[0]), selected_idx]
             
-            # Decode the latent
-            samples = diffuser.vqvae.decode(encoding, quantize=False).cpu()
+            # # Decode the latent
+            # samples = diffuser.vqvae.decode(encoding, quantize=False).cpu()
 
             # Save the images
             for j, sample in enumerate(samples):

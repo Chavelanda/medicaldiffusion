@@ -46,7 +46,10 @@ class Diffuser(pl.LightningModule):
         self.vqvae.freeze()
 
         self.unet = self.setup_unet(in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups)
-        self.noise_scheduler = noise_scheduler_class(num_train_timesteps=training_timesteps)
+        self.noise_scheduler = noise_scheduler_class(num_train_timesteps=training_timesteps, 
+                                                     beta_schedule='squaredcos_cap_v2',
+                                                     prediction_type='v_prediction', 
+                                                     variance_type='fixed_small_log')
         self.training_timesteps = training_timesteps
 
         self.ema_model = AveragedModel(self.unet, 
@@ -90,7 +93,7 @@ class Diffuser(pl.LightningModule):
         # sample a random timestep for each image
         if timesteps is None:
             batch_size = x.shape[0]
-            timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device).long()
+            timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device).to(torch.IntTensor)
 
         # add noise to the clean images according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -172,6 +175,8 @@ class Diffuser(pl.LightningModule):
         Returns:
             `torch.Tensor`: The generated images.
         """
+        self.noise_scheduler.set_timesteps(num_inference_steps, device=self.device)
+
         latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_d, self.unet.sample_h, self.unet.sample_w),
             generator=generator,
@@ -180,8 +185,6 @@ class Diffuser(pl.LightningModule):
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.noise_scheduler.init_noise_sigma
-
-        self.noise_scheduler.set_timesteps(num_inference_steps, device=self.device)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.noise_scheduler.step).parameters.keys())
@@ -200,6 +203,10 @@ class Diffuser(pl.LightningModule):
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.noise_scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
 
+
+        # denormalize the latents
+        latents = (((latents + 1.0) / 2.0) * (self.vqvae.codebook.embeddings.max() - self.vqvae.codebook.embeddings.min())) + self.vqvae.codebook.embeddings.min()
+
         return latents
 
     @torch.no_grad()
@@ -212,9 +219,6 @@ class Diffuser(pl.LightningModule):
                cond_scale = None,):
         
         latents = self.sample_latent(batch_size=batch_size, generator=generator, eta=eta, num_inference_steps=num_inference_steps, cond=cond, cond_scale=cond_scale)
-
-        # denormalize the latents
-        latents = (((latents + 1.0) / 2.0) * (self.vqvae.codebook.embeddings.max() - self.vqvae.codebook.embeddings.min())) + self.vqvae.codebook.embeddings.min()
 
         # decode the image latents with the VAE
         samples = self.vqvae.decode(latents, quantize=True)

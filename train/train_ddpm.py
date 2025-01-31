@@ -54,8 +54,10 @@ def run(cfg: DictConfig):
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor=f'val/loss_{cfg.model.loss_type}',
                      save_top_k=1, mode='min', dirpath=results_folder, filename='best_val-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
+    callbacks.append(ModelCheckpoint(every_n_epochs=10, save_top_k=-1,
                      dirpath=results_folder, filename='train-{epoch}-{step}'))
+    callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
+                     dirpath=results_folder, filename='last-train-{epoch}-{step}'))
     # progress bar callback
     callbacks.append(TQDMProgressBar(refresh_rate=50))
     # log lr callback
@@ -68,7 +70,6 @@ def run(cfg: DictConfig):
     ckpt_path = cfg.model.load_milestone
     if ckpt_path is not None:
         assert os.path.isfile(ckpt_path), f'Checkpoint is not None, but it is not a file: {ckpt_path}'
-        diffuser = Diffuser.load_from_checkpoint(ckpt_path, noise_scheduler=noise_scheduler_class)
         print(f'Will resume from the ckpt {ckpt_path}')
     else:
         diffuser = Diffuser(
@@ -101,7 +102,7 @@ def run(cfg: DictConfig):
         max_epochs=-1,
         precision=cfg.model.precision,
         logger=wandb_logger,
-        # strategy='ddp_find_unused_parameters_true',
+        strategy='ddp',
         log_every_n_steps=50,
         check_val_every_n_epoch=cfg.model.check_val_every_n_epoch,
         fast_dev_run=False, 
@@ -116,7 +117,6 @@ def run(cfg: DictConfig):
     torch.set_float32_matmul_precision('medium')
 
     trainer.fit(diffuser, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
-    # trainer.validate(diffuser, val_dataloader)
 
 if __name__ == '__main__':
     run()

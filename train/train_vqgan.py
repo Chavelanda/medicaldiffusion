@@ -52,7 +52,31 @@ def run(cfg: DictConfig):
         cfg.dataset.h = train_dataset.h
         cfg.dataset.w = train_dataset.w
 
-    model = VQGAN(cfg)
+    model = VQGAN(embedding_dim=cfg.model.embedding_dim,
+                  n_codes=cfg.model.n_codes,
+                  n_hiddens=cfg.model.n_hiddens,
+                  downsample=cfg.model.downsample,
+                  image_channels=cfg.dataset.image_channels,
+                  norm_type=cfg.model.norm_type,
+                  padding_type=cfg.model.padding_type,
+                  num_groups=cfg.model.num_groups,
+                  no_random_restart=cfg.model.no_random_restart,
+                  restart_thres=cfg.model.restart_thres,
+                  d=cfg.dataset.d,
+                  h=cfg.dataset.h,
+                  w=cfg.dataset.w,
+                  gan_feat_weight=cfg.model.gan_feat_weight,
+                  disc_channels=cfg.model.disc_channels,
+                  disc_layers=cfg.model.disc_layers,
+                  disc_loss_type=cfg.model.disc_loss_type,
+                  image_gan_weight=cfg.model.image_gan_weight,
+                  video_gan_weight=cfg.model.video_gan_weight,
+                  perceptual_weight=cfg.model.perceptual_weight,
+                  l1_weight=cfg.model.l1_weight,
+                  gradient_clip_val=cfg.model.gradient_clip_val,
+                  discriminator_iter_start=cfg.model.discriminator_iter_start,
+                  lr=cfg.model.lr,
+                  base_lr=cfg.model.base_lr,)
 
     # model checkpointing callbacks
     callbacks = []
@@ -69,7 +93,6 @@ def run(cfg: DictConfig):
     ckpt_path = None
     if cfg.model.resume and os.path.isfile(cfg.model.checkpoint_path):
         assert os.path.isfile(cfg.model.checkpoint_path), f'Resume is {cfg.model.resume} but {cfg.model.checkpoint_path} is not a checkpoint file!'
-        model = VQGAN.load_from_checkpoint(cfg.model.checkpoint_path, cfg=cfg)
         ckpt_path = cfg.model.checkpoint_path
         print(f'Will resume from the recent ckpt {ckpt_path}')
         

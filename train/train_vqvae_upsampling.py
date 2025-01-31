@@ -15,7 +15,7 @@ from dataset.get_dataset import get_dataset
 
 @hydra.main(config_path='../config', config_name='base_cfg', version_base=None)
 def run(cfg: DictConfig):
-    # torch.cuda.memory._record_memory_history()
+    
     pl.seed_everything(cfg.model.seed)
 
     train_dataset, val_dataset, sampler = get_dataset(cfg)
@@ -53,6 +53,8 @@ def run(cfg: DictConfig):
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_epochs=30, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
+    callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
+                     dirpath=base_dir, filename='last-{epoch}-{step}'))
     # progress bar callback
     callbacks.append(TQDMProgressBar(refresh_rate=50))
     # log lr callback
@@ -62,11 +64,39 @@ def run(cfg: DictConfig):
     ckpt_path = None
     if cfg.model.resume and os.path.isfile(cfg.model.checkpoint_path):
         assert os.path.isfile(cfg.model.checkpoint_path), f'Resume is {cfg.model.resume} but {cfg.model.checkpoint_path} is not a checkpoint file!'
-        model = VQVAEUpsampling.load_from_checkpoint(cfg.model.checkpoint_path)
         ckpt_path = cfg.model.checkpoint_path
         print(f'Will resume from the recent ckpt {ckpt_path}')
-    else:
-        model = VQVAEUpsampling(cfg, original_d=train_dataset.original_d, original_h=train_dataset.original_h, original_w=train_dataset.original_w, architecture=cfg.model.architecture, architecture_down=cfg.model.architecture_down)
+    
+    model = VQVAEUpsampling(embedding_dim=cfg.model.embedding_dim,
+                            n_codes=cfg.model.n_codes,
+                            n_hiddens=cfg.model.n_hiddens,
+                            downsample=cfg.model.downsample,
+                            image_channels=cfg.dataset.image_channels,
+                            norm_type=cfg.model.norm_type,
+                            padding_type=cfg.model.padding_type,
+                            num_groups=cfg.model.num_groups,
+                            no_random_restart=cfg.model.no_random_restart,
+                            restart_thres=cfg.model.restart_thres,
+                            d=cfg.dataset.d,
+                            h=cfg.dataset.h,
+                            w=cfg.dataset.w,
+                            gan_feat_weight=cfg.model.gan_feat_weight,
+                            disc_channels=cfg.model.disc_channels,
+                            disc_layers=cfg.model.disc_layers,
+                            disc_loss_type=cfg.model.disc_loss_type,
+                            image_gan_weight=cfg.model.image_gan_weight,
+                            video_gan_weight=cfg.model.video_gan_weight,
+                            perceptual_weight=cfg.model.perceptual_weight,
+                            l1_weight=cfg.model.l1_weight,
+                            gradient_clip_val=cfg.model.gradient_clip_val,
+                            discriminator_iter_start=cfg.model.discriminator_iter_start,
+                            lr=cfg.model.lr,
+                            base_lr=cfg.model.base_lr, 
+                            original_d=train_dataset.original_d, 
+                            original_h=train_dataset.original_h, 
+                            original_w=train_dataset.original_w, 
+                            architecture=cfg.model.architecture, 
+                            architecture_down=cfg.model.architecture_down)
         
     # create wandb logger
     wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model=False)
@@ -81,8 +111,10 @@ def run(cfg: DictConfig):
         max_epochs=cfg.model.max_epochs,
         precision=cfg.model.precision,
         logger=wandb_logger,
-        strategy='ddp_find_unused_parameters_true',
+        strategy='ddp',
         log_every_n_steps=50,
+        # test
+        # fast_dev_run=5
     )
 
     # Updating wandb configs
@@ -90,6 +122,7 @@ def run(cfg: DictConfig):
         wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.dataset))
         wandb_logger.experiment.config.update(OmegaConf.to_container(cfg.model))
         wandb_logger.experiment.config["ckpt_path"] = ckpt_path
+        # torch.cuda.memory._record_memory_history()
 
     torch.set_float32_matmul_precision('medium')
 
@@ -98,8 +131,9 @@ def run(cfg: DictConfig):
     except Exception as error:
         print("An exception occurred:", error)
     finally:
-        # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
-        pass
+        if trainer.global_rank == 0:
+            # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
+            pass
         
 
 if __name__ == '__main__':

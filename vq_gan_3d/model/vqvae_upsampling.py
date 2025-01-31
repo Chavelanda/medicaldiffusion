@@ -16,8 +16,8 @@ class VQVAEUpsampling(VQGAN):
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
     # that is equal to the original size provided as attribute of the init method.
 
-    def __init__(self, cfg, original_d, original_h, original_w, architecture='base', architecture_down='base'):
-        super().__init__(cfg)
+    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', **kwargs):
+        super().__init__(*args, **kwargs)
         self.size = (original_d, original_h, original_w)
         self.architecture_down = architecture_down
         self.architecture = architecture
@@ -40,7 +40,7 @@ class VQVAEUpsampling(VQGAN):
 
     def setup_up(self):
         # As last layer I do a deterministic trilinear upsampling
-        conv = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)
+        conv = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.image_channels, kernel_size=3)
         upsampling = nn.Upsample(size=self.size, mode='trilinear')
 
         self.decoder.conv_last = nn.Sequential(conv, upsampling)
@@ -48,18 +48,18 @@ class VQVAEUpsampling(VQGAN):
     def setup_up_conv(self):
         # As last layer I do a deterministic trilinear upsampling
         # Moreover, I add a final conv layer
-        conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)
+        conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.image_channels, kernel_size=3)
         upsampling = nn.Upsample(size=self.size, mode='trilinear')
-        conv2 = SamePadConv3d(self.cfg.dataset.image_channels, self.cfg.dataset.image_channels, kernel_size=3)
+        conv2 = SamePadConv3d(self.image_channels, self.image_channels, kernel_size=3)
 
         self.decoder.conv_last = nn.Sequential(conv1, upsampling, conv2)
 
     def setup_up_res_conv(self):
         # As last layer I do a deterministic trilinear upsampling
         # Moreover, I add a final residual conv layer
-        conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)
+        conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.image_channels, kernel_size=3)
         upsampling = nn.Upsample(size=self.size, mode='trilinear')
-        conv2 = ResidualSamePadConv3d(self.cfg.dataset.image_channels, self.cfg.dataset.image_channels, kernel_size=3)
+        conv2 = ResidualSamePadConv3d(self.image_channels, self.image_channels, kernel_size=3)
 
         self.decoder.conv_last = nn.Sequential(conv1, upsampling, conv2)
 
@@ -67,7 +67,7 @@ class VQVAEUpsampling(VQGAN):
         # In this case, instead of a trilinear upsampling, I apply a learnable transposed convolution.
         # The transposed convolution is initialized as a trilinear upsampling (it makes sense since we are in the image space)
         # After that I still apply a trilinear upsampling layer to fill the resolution gap to the original size 
-        conv = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.cfg.dataset.image_channels, kernel_size=3)
+        conv = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.image_channels, kernel_size=3)
         kernel_size=4
         up1 = SamePadConvTranspose3d(1, 1, kernel_size=kernel_size, stride=2)
         self.init_trilinear_kernel(kernel_size, up1.convt)
@@ -76,8 +76,8 @@ class VQVAEUpsampling(VQGAN):
         self.decoder.conv_last = nn.Sequential(conv, up1, up2)
 
     def setup_down_furbo(self):
-        conv1 = SamePadConv3d(self.cfg.dataset.image_channels, 8, kernel_size=3, stride=2, padding_type=self.cfg.model.padding_type)
-        conv2 = SamePadConv3d(8, self.cfg.model.n_hiddens, kernel_size=3, padding_type=self.cfg.model.padding_type)
+        conv1 = SamePadConv3d(self.image_channels, 8, kernel_size=3, stride=2, padding_type=self.padding_type)
+        conv2 = SamePadConv3d(8, self.n_hiddens, kernel_size=3, padding_type=self.padding_type)
 
         self.encoder.conv_first = nn.Sequential(conv1, conv2)
 
@@ -103,7 +103,7 @@ class VQVAEUpsampling(VQGAN):
 
     def forward(self, x, x_original=None, name='train'):
         # Pad image so that it is divisible by downsampling scale
-        x, _ = pad_to_multiple(x, self.cfg.model.downsample)
+        x, _ = pad_to_multiple(x, self.downsample)
 
         B, C, T, H, W = x.shape
 
@@ -178,7 +178,7 @@ class VQVAEUpsampling(VQGAN):
 
     def configure_optimizers(self):
         print('Setting up optimizers')
-        lr = self.cfg.model.lr
+        lr = self.lr
         opt_ae = torch.optim.Adam(list(self.encoder.parameters()) +
                                   list(self.decoder.parameters()) +
                                   list(self.pre_vq_conv.parameters()) +
@@ -187,7 +187,7 @@ class VQVAEUpsampling(VQGAN):
                                   lr=lr, betas=(0.5, 0.9))
         
         # compute start factor to begin with base_lr
-        start_factor = self.cfg.model.base_lr/lr
+        start_factor = self.base_lr/lr
         ae_scheduler = {'scheduler': torch.optim.lr_scheduler.LinearLR(opt_ae, start_factor=start_factor, total_iters=5), 'name': 'warmup-ae'}
         plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau-ae'}
         

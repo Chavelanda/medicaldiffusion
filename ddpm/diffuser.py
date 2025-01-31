@@ -16,6 +16,20 @@ from ddpm.ldm3d_pipeline import LDM3DPipeline
 from ddpm.utils import video_tensor_to_gif
 
 
+def cosine_beta_schedule(timesteps, s=0.008):
+    """
+    cosine schedule
+    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
+    """
+    steps = timesteps + 1
+    x = torch.linspace(0, timesteps, steps, dtype=torch.float64)
+    alphas_cumprod = torch.cos(
+        ((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 0, 0.9999)
+
+
 class Diffuser(pl.LightningModule):
     def __init__(self, 
                 vqvae_ckpt,
@@ -39,17 +53,26 @@ class Diffuser(pl.LightningModule):
                 loss='l2', 
                 lr=1e-4,
                 results_folder=None,
-                training_timesteps=300):
+                training_timesteps=300,
+                **scheduler_kwargs):
         super().__init__()
         self.vqvae = VQVAEUpsampling.load_from_checkpoint(vqvae_ckpt)
         self.vqvae.eval()
         self.vqvae.freeze()
 
         self.unet = self.setup_unet(in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups)
+        
+        scheduler_params = {
+            'trained_betas': cosine_beta_schedule(training_timesteps).detach().cpu().numpy(),
+            'prediction_type': 'epsilon',
+            'variance_type': 'fixed_small_log',
+        }
+
+        for key, value in scheduler_kwargs.items():
+            scheduler_params[key] = value
+
         self.noise_scheduler = noise_scheduler_class(num_train_timesteps=training_timesteps, 
-                                                     beta_schedule='squaredcos_cap_v2',
-                                                     prediction_type='v_prediction', 
-                                                     variance_type='fixed_small_log')
+                                                     **scheduler_params)
         self.training_timesteps = training_timesteps
 
         self.ema_model = AveragedModel(self.unet, 
@@ -93,7 +116,7 @@ class Diffuser(pl.LightningModule):
         # sample a random timestep for each image
         if timesteps is None:
             batch_size = x.shape[0]
-            timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device).to(torch.IntTensor)
+            timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device)
 
         # add noise to the clean images according to the noise magnitude at each timestep
         # (this is the forward diffusion process)

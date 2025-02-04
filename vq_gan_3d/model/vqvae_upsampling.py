@@ -16,11 +16,12 @@ class VQVAEUpsampling(VQGAN):
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
     # that is equal to the original size provided as attribute of the init method.
 
-    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', **kwargs):
+    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, **kwargs):
         super().__init__(*args, **kwargs)
         self.size = (original_d, original_h, original_w)
         self.architecture_down = architecture_down
         self.architecture = architecture
+        self.up_factor = up_factor
 
         print(f'\nSetting up with decoder architecture {architecture} and encoder architecture {architecture_down}\n')
 
@@ -41,7 +42,12 @@ class VQVAEUpsampling(VQGAN):
     def setup_up(self):
         # As last layer I do a deterministic trilinear upsampling
         conv = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.image_channels, kernel_size=3)
-        upsampling = nn.Upsample(size=self.size, mode='trilinear')
+
+        if self.up_factor != 0:
+            final_size = [s * self.up_factor for s in self.size]
+            upsampling = nn.Upsample(size=final_size, mode='trilinear')
+        else:
+            upsampling = nn.Identity()
 
         self.decoder.conv_last = nn.Sequential(conv, upsampling)
 

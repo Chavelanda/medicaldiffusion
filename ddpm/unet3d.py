@@ -427,7 +427,7 @@ class Unet3D(nn.Module):
         dim_mults = default(dim_mults, (1, 2, 4, 8))
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
-        self.pad_divisors = (len(dim_mults), len(dim_mults), len(dim_mults))
+        self.pad_divisors = (dim_mults[-1], dim_mults[-1], dim_mults[-1])
 
         # time conditioning
         time_dim = dim * 4

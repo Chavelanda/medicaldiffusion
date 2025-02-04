@@ -52,9 +52,11 @@ def run(cfg: DictConfig):
 
     # model checkpointing callbacks
     callbacks = []
-    callbacks.append(ModelCheckpoint(monitor=f'val/loss_{cfg.model.loss_type}',
-                     save_top_k=1, mode='min', dirpath=results_folder, filename='best_val-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_epochs=10, save_top_k=-1,
+    callbacks.append(ModelCheckpoint(monitor=f'val/loss_l1',
+                     save_top_k=1, mode='min', dirpath=results_folder, filename='best_val_l1-{epoch}-{step}'))
+    callbacks.append(ModelCheckpoint(monitor=f'val/loss_l2',
+                     save_top_k=1, mode='min', dirpath=results_folder, filename='best_val_l2-{epoch}-{step}'))
+    callbacks.append(ModelCheckpoint(every_n_epochs=50, save_top_k=-1,
                      dirpath=results_folder, filename='train-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
                      dirpath=results_folder, filename='last-train-{epoch}-{step}'))
@@ -71,24 +73,24 @@ def run(cfg: DictConfig):
     if ckpt_path is not None:
         assert os.path.isfile(ckpt_path), f'Checkpoint is not None, but it is not a file: {ckpt_path}'
         print(f'Will resume from the ckpt {ckpt_path}')
-    else:
-        diffuser = Diffuser(
-            vqvae_ckpt=cfg.model.vqvae_ckpt,
-            noise_scheduler_class=noise_scheduler_class,
-            in_channels=cfg.model.diffusion_num_channels,
-            sample_d=cfg.model.diffusion_d,
-            sample_h=cfg.model.diffusion_h,
-            sample_w=cfg.model.diffusion_w,
-            dim=cfg.model.dim,
-            dim_mults=cfg.model.dim_mults,
-            use_class_cond=use_class_cond,
-            cond_dim=cond_dim,
-            null_cond_prob=cfg.model.null_cond_prob,
-            ema_decay=cfg.model.ema_decay,
-            loss=cfg.model.loss_type,
-            lr=cfg.model.train_lr,
-            training_timesteps=cfg.model.timesteps,
-        )
+    
+    diffuser = Diffuser(
+        vqvae_ckpt=cfg.model.vqvae_ckpt,
+        noise_scheduler_class=noise_scheduler_class,
+        in_channels=cfg.model.diffusion_num_channels,
+        sample_d=cfg.model.diffusion_d,
+        sample_h=cfg.model.diffusion_h,
+        sample_w=cfg.model.diffusion_w,
+        dim=cfg.model.dim,
+        dim_mults=cfg.model.dim_mults,
+        use_class_cond=use_class_cond,
+        cond_dim=cond_dim,
+        null_cond_prob=cfg.model.null_cond_prob,
+        ema_decay=cfg.model.ema_decay,
+        loss=cfg.model.loss_type,
+        lr=cfg.model.train_lr,
+        training_timesteps=cfg.model.timesteps,
+    )
     
     # create wandb logger
     wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model=False)
@@ -102,7 +104,7 @@ def run(cfg: DictConfig):
         max_epochs=-1,
         precision=cfg.model.precision,
         logger=wandb_logger,
-        strategy='ddp',
+        strategy='ddp_find_unused_parameters_true',
         log_every_n_steps=50,
         check_val_every_n_epoch=cfg.model.check_val_every_n_epoch,
         fast_dev_run=False, 

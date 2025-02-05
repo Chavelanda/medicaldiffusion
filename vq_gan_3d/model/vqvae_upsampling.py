@@ -129,8 +129,8 @@ class VQVAEUpsampling(VQGAN):
         losses[f'{name}/recon_loss'] = F.l1_loss(x_recon, x_original) * self.l1_weight
 
         # Selects one random 2D image from each 3D Image
-        frame_idx = torch.randint(0, self.size[0], [B]).to(self.device)
-        frame_idx_selected = frame_idx.reshape(-1, 1, 1, 1, 1).repeat(1, C, 1, self.size[1], self.size[2])
+        frame_idx = torch.randint(0, x_recon.shape[2], [B]).to(self.device)
+        frame_idx_selected = frame_idx.reshape(-1, 1, 1, 1, 1).repeat(1, C, 1, x_recon.shape[3], x_recon.shape[4])
         frames = torch.gather(x_original, 2, frame_idx_selected).squeeze(2)
         frames_recon = torch.gather(x_recon, 2, frame_idx_selected).squeeze(2)
         # Still VQ-VAE loss
@@ -143,7 +143,10 @@ class VQVAEUpsampling(VQGAN):
         opt_ae = self.optimizers()
         
         x = batch['data']
-        x_original = batch['data_original']
+        if self.architecture == 'base':
+            x_original = x.detach().clone()
+        else:
+            x_original = batch['data_original']
 
         
         _, losses, _ = self.forward(x, x_original, name='train')
@@ -162,7 +165,10 @@ class VQVAEUpsampling(VQGAN):
 
     def validation_step(self, batch, batch_idx):
         x = batch['data']
-        x_original = batch['data_original']
+        if self.architecture == 'base':
+            x_original = x.detach().clone()
+        else:
+            x_original = batch['data_original']
 
         _, losses, frames = self.forward(x, x_original, name='val')
         

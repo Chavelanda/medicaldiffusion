@@ -41,18 +41,25 @@ class VQVAEUpsampling(VQGAN):
         setup_dict[self.architecture_down]()
         setup_dict[self.architecture]()
 
+        self.initialized = False
+
         self.save_hyperparameters()
 
 
     def configure_model(self):
-        # Setup model parallelism
-        if self.trainer.accelerator == 'cpu':
-            self.idx_0 = 'cpu'
+        if self.initialized:
+            return
         else:
-            self.idx_0 = self.trainer.device_ids[self.local_rank]
-        
-        self.idx_1 = self.idx_0
-        
+            self.initialized = True
+            # Setup model parallelism 1
+            if self.trainer.accelerator == 'cpu':
+                self.idx_0 = 'cpu'
+            else:
+                self.idx_0 = self.trainer.device_ids[self.local_rank]
+            
+            self.idx_1 = self.idx_0
+
+    def set_model_parallelism(self):
         if self.model_parallelism:
             self.idx_1 = self.idx_0 + 1
 
@@ -124,6 +131,8 @@ class VQVAEUpsampling(VQGAN):
             conv.bias.data.zero_()
 
     def on_fit_start(self):
+        self.set_model_parallelism()
+
         block = self.decoder.conv_blocks[1]
         block.res1.conv2.to(self.idx_1)
         block.res2.to(self.idx_1)

@@ -102,6 +102,7 @@ def run(cfg: DictConfig):
     # Setup model parallelism
     if cfg.model.model_parallelism:
         # Check there are enough available GPUs
+        assert cfg.model.devices == 1, f'Model parallelism is working only with one process. Instead devices was set to {cfg.model.devices}'
         assert torch.cuda.device_count() >= cfg.model.devices * 2, f"When model parallelism is active, the number of available GPUs should be at least double the number of processes. Instead {torch.cuda.device_count()} < {cfg.model.devices}*2"
         devices = [i * 2 for i in range(cfg.model.devices)]
     else:
@@ -120,7 +121,7 @@ def run(cfg: DictConfig):
         max_epochs=cfg.model.max_epochs,
         precision=cfg.model.precision,
         logger=wandb_logger,
-        strategy='ddp',
+        strategy='auto',
         log_every_n_steps=50,
         # test
         fast_dev_run=False

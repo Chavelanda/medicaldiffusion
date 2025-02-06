@@ -496,6 +496,12 @@ class Decoder(nn.Module):
         h = self.conv_last(h)
         return h
 
+    def forward_block(self, i, x):
+        block = self.conv_blocks[i]
+        x = block.up(x)
+        x = block.res1(x)
+        x = block.res2(x)
+        return x
 
 class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels=None, conv_shortcut=False, dropout=0.0, norm_type='group', padding_type='replicate', num_groups=32):

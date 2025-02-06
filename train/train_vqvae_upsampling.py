@@ -96,14 +96,23 @@ def run(cfg: DictConfig):
                             original_h=train_dataset.original_h, 
                             original_w=train_dataset.original_w, 
                             architecture=cfg.model.architecture, 
-                            architecture_down=cfg.model.architecture_down)
+                            architecture_down=cfg.model.architecture_down,
+                            model_parallelism=cfg.model.model_parallelism)
         
+    # Setup model parallelism
+    if cfg.model.model_parallelism:
+        # Check there are enough available GPUs
+        assert torch.cuda.device_count() >= cfg.model.devices * 2, f"When model parallelism is active, the number of available GPUs should be at least double the number of processes. Instead {torch.cuda.device_count()} < {cfg.model.devices}*2"
+        devices = [i * 2 for i in range(cfg.model.devices)]
+    else:
+        devices = cfg.model.devices
+
     # create wandb logger
     wandb_logger = pl.loggers.WandbLogger(name=cfg.model.run_name, project=cfg.model.wandb_project, entity=cfg.model.wandb_entity, log_model=False)
 
     trainer = pl.Trainer(
         accelerator=cfg.model.accelerator,
-        devices=cfg.model.devices,
+        devices=devices,
         accumulate_grad_batches=cfg.model.accumulate_grad_batches,
         default_root_dir=cfg.model.default_root_dir,
         callbacks=callbacks,
@@ -114,7 +123,7 @@ def run(cfg: DictConfig):
         strategy='ddp',
         log_every_n_steps=50,
         # test
-        # fast_dev_run=5
+        fast_dev_run=False
     )
 
     # Updating wandb configs
@@ -126,15 +135,15 @@ def run(cfg: DictConfig):
 
     torch.set_float32_matmul_precision('medium')
 
-    try:
-        trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
-    except Exception as error:
-        print("An exception occurred:", error)
-    finally:
-        if trainer.global_rank == 0:
-            # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
-            pass
-        
+    # try:
+    trainer.fit(model, train_dataloader, val_dataloader, ckpt_path=ckpt_path)
+    # except Exception as error:
+    #     print("An exception occurred:", error)
+    # finally:
+    #     if trainer.global_rank == 0:
+    #         # torch.cuda.memory._dump_snapshot("my_snapshot.pickle")
+    #         pass
+
 
 if __name__ == '__main__':
     run()

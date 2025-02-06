@@ -4,6 +4,7 @@ num_workers: 16
 
 accelerator: cuda
 devices: 2
+model_parallelism: False
 accumulate_grad_batches: 1
 default_root_dir: checkpoints/vq_gan_3d
 default_root_dir_postfix: ''

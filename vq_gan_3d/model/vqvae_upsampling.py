@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from vq_gan_3d.model.vqgan import VQGAN, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d
+from vq_gan_3d.model.vqgan import VQGAN, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d, silu
 
 
 class VQVAEUpsampling(VQGAN):
@@ -16,12 +16,15 @@ class VQVAEUpsampling(VQGAN):
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
     # that is equal to the original size provided as attribute of the init method.
 
-    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, **kwargs):
+    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, model_parallelism=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.size = (original_d, original_h, original_w)
         self.architecture_down = architecture_down
         self.architecture = architecture
+        # The up factor is used to decide how much to upsample the image in the decoder as a factor of the original size. 0 not tu upsample 
         self.up_factor = up_factor
+
+        self.model_parallelism = model_parallelism
 
         print(f'\nSetting up with decoder architecture {architecture} and encoder architecture {architecture_down}\n')
 
@@ -33,11 +36,25 @@ class VQVAEUpsampling(VQGAN):
             'base': lambda *args, **kwargs: None,
             'down_furbo': self.setup_down_furbo
         }
-        
+
+        # Setup architecture        
         setup_dict[self.architecture_down]()
         setup_dict[self.architecture]()
 
         self.save_hyperparameters()
+
+
+    def configure_model(self):
+        # Setup model parallelism
+        if self.trainer.accelerator == 'cpu':
+            self.idx_0 = 'cpu'
+        else:
+            self.idx_0 = self.trainer.device_ids[self.local_rank]
+        
+        self.idx_1 = self.idx_0
+        
+        if self.model_parallelism:
+            self.idx_1 = self.idx_0 + 1
 
     def setup_up(self):
         # As last layer I do a deterministic trilinear upsampling
@@ -106,6 +123,16 @@ class VQVAEUpsampling(VQGAN):
         if conv.bias is not None:
             conv.bias.data.zero_()
 
+    def on_fit_start(self):
+        block = self.decoder.conv_blocks[1]
+        block.res1.conv2.to(self.idx_1)
+        block.res2.to(self.idx_1)
+        for i, block in enumerate(self.decoder.conv_blocks):
+            if i not in (0,1):
+                block.to(self.idx_1)
+        self.decoder.conv_last.to(self.idx_1)
+
+        print("Let's go!")
 
     def forward(self, x, x_original=None, name='train'):
         # Pad image so that it is divisible by downsampling scale
@@ -115,9 +142,42 @@ class VQVAEUpsampling(VQGAN):
 
         losses = {}
 
-        z = self.pre_vq_conv(self.encoder(x))
-        vq_output = self.codebook(z)
-        x_recon = self.decoder(self.post_vq_conv(vq_output['embeddings']))
+        x = self.pre_vq_conv(self.encoder(x))
+        vq_output = self.codebook(x)
+        x = self.post_vq_conv(vq_output['embeddings'])
+
+        # Decoder is decomposed for model parallelism
+        n_blocks = len(self.decoder.conv_blocks)
+        
+        x_recon = self.decoder.final_block(x)
+        
+        x_recon = self.decoder.forward_block(0, x_recon)
+        
+        block = self.decoder.conv_blocks[1]
+        x_recon = block.up(x_recon)
+        # I have to decompose also res1 to reach best parallelism
+        h = x_recon
+        h = block.res1.norm1(h)
+        h = silu(h)
+        h = block.res1.conv1(h)
+        h = block.res1.norm2(h).to(self.idx_1)
+        h = silu(h)
+        h = block.res1.conv2(h)
+
+        if block.res1.in_channels != block.res1.out_channels:
+            x_recon = block.res1.conv_shortcut(x_recon)
+
+        x_recon = x_recon.to(self.idx_1)
+        x_recon =  x_recon+h
+        
+        x_recon = block.res2(x_recon)
+        
+        for i in range(n_blocks - 2):
+            i = i + 2
+            x_recon = self.decoder.forward_block(i, x_recon)
+        
+        x_recon = self.decoder.conv_last(x_recon).to(self.idx_0)
+
 
         if name=='test': return x_recon
 

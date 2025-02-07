@@ -16,13 +16,14 @@ class VQVAEUpsampling(VQGAN):
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
     # that is equal to the original size provided as attribute of the init method.
 
-    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, model_parallelism=False, **kwargs):
+    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, model_parallelism=False, upsampling_mode='trilinear', **kwargs):
         super().__init__(*args, **kwargs)
         self.size = (original_d, original_h, original_w)
         self.architecture_down = architecture_down
         self.architecture = architecture
         # The up factor is used to decide how much to upsample the image in the decoder as a factor of the original size. 0 not tu upsample 
         self.up_factor = up_factor
+        self.upsampling_mode = upsampling_mode
 
         self.model_parallelism = model_parallelism
 
@@ -52,10 +53,10 @@ class VQVAEUpsampling(VQGAN):
         else:
             self.initialized = True
             # Setup model parallelism 1
-            if self.trainer.accelerator == 'cpu':
+            if self.device.index is None:
                 self.idx_0 = 'cpu'
             else:
-                self.idx_0 = self.trainer.device_ids[self.local_rank]
+                self.idx_0 = self.device.index
             
             self.idx_1 = self.idx_0
 
@@ -69,7 +70,7 @@ class VQVAEUpsampling(VQGAN):
 
         if self.up_factor != 0:
             final_size = [s * self.up_factor for s in self.size]
-            upsampling = nn.Upsample(size=final_size, mode='trilinear')
+            upsampling = nn.Upsample(size=final_size, mode=self.upsampling_mode)
         else:
             upsampling = nn.Identity()
 
@@ -79,7 +80,7 @@ class VQVAEUpsampling(VQGAN):
         # As last layer I do a deterministic trilinear upsampling
         # Moreover, I add a final conv layer
         conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.image_channels, kernel_size=3)
-        upsampling = nn.Upsample(size=self.size, mode='trilinear')
+        upsampling = nn.Upsample(size=self.size, mode=self.upsampling_mode)
         conv2 = SamePadConv3d(self.image_channels, self.image_channels, kernel_size=3)
 
         self.decoder.conv_last = nn.Sequential(conv1, upsampling, conv2)
@@ -88,7 +89,7 @@ class VQVAEUpsampling(VQGAN):
         # As last layer I do a deterministic trilinear upsampling
         # Moreover, I add a final residual conv layer
         conv1 = SamePadConv3d(self.decoder.conv_last.conv.in_channels, self.image_channels, kernel_size=3)
-        upsampling = nn.Upsample(size=self.size, mode='trilinear')
+        upsampling = nn.Upsample(size=self.size, mode=self.upsampling_mode)
         conv2 = ResidualSamePadConv3d(self.image_channels, self.image_channels, kernel_size=3)
 
         self.decoder.conv_last = nn.Sequential(conv1, upsampling, conv2)
@@ -101,7 +102,7 @@ class VQVAEUpsampling(VQGAN):
         kernel_size=4
         up1 = SamePadConvTranspose3d(1, 1, kernel_size=kernel_size, stride=2)
         self.init_trilinear_kernel(kernel_size, up1.convt)
-        up2 = nn.Upsample(size=self.size, mode='trilinear')
+        up2 = nn.Upsample(size=self.size, mode=self.upsampling_mode)
 
         self.decoder.conv_last = nn.Sequential(conv, up1, up2)
 
@@ -144,6 +145,8 @@ class VQVAEUpsampling(VQGAN):
         print("Let's go!")
 
     def forward(self, x, x_original=None, name='train'):
+        if not self.initialized:
+            self.configure_model()
         # Pad image so that it is divisible by downsampling scale
         x, _ = pad_to_multiple(x, self.downsample)
 

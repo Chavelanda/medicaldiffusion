@@ -21,6 +21,7 @@ n_codes: 16384 # Number of codes in the codebook
 n_hiddens: 16  # Number of channels of the input in the first conv before encoding 
 lr: 1e-5
 downsample: [4, 4, 4] # [4,4,4]
+simple_architecture: False
 
 i3d_feat: False # not used??
 restart_thres: 1.0

@@ -97,7 +97,8 @@ def run(cfg: DictConfig):
                             original_w=train_dataset.original_w, 
                             architecture=cfg.model.architecture, 
                             architecture_down=cfg.model.architecture_down,
-                            model_parallelism=cfg.model.model_parallelism)
+                            model_parallelism=cfg.model.model_parallelism,
+                            simple_architecture=cfg.model.simple_architecture)
         
     # Setup model parallelism
     if cfg.model.model_parallelism:

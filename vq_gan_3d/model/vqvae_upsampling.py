@@ -1,3 +1,4 @@
+import math
 from omegaconf import OmegaConf
 from torchsummary import summary
 import wandb
@@ -7,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from vq_gan_3d.model.vqgan import VQGAN, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d, silu
+from vq_gan_3d.model.vqgan import VQGAN, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d, silu, SiLU, Normalize, ResBlock
 
 
 class VQVAEUpsampling(VQGAN):
@@ -16,8 +17,8 @@ class VQVAEUpsampling(VQGAN):
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
     # that is equal to the original size provided as attribute of the init method.
 
-    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, model_parallelism=False, upsampling_mode='trilinear', **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, model_parallelism=False, upsampling_mode='trilinear', simple_architecture=False, **kwargs):
+        super().__init__(*args, simple_architecture=simple_architecture, **kwargs)
         self.size = (original_d, original_h, original_w)
         self.architecture_down = architecture_down
         self.architecture = architecture
@@ -26,6 +27,8 @@ class VQVAEUpsampling(VQGAN):
         self.upsampling_mode = upsampling_mode
 
         self.model_parallelism = model_parallelism
+
+        self.simple_architecture = simple_architecture
 
         print(f'\nSetting up with decoder architecture {architecture} and encoder architecture {architecture_down}\n')
 
@@ -41,6 +44,12 @@ class VQVAEUpsampling(VQGAN):
         # Setup architecture        
         setup_dict[self.architecture_down]()
         setup_dict[self.architecture]()
+
+        if self.simple_architecture:
+            print('Setting up simple architecture')
+            for block in self.decoder.conv_blocks:
+                block.res2 = nn.Identity()
+            pass
 
         self.initialized = False
 
@@ -59,10 +68,21 @@ class VQVAEUpsampling(VQGAN):
                 self.idx_0 = self.device.index
             
             self.idx_1 = self.idx_0
+            self.idx_2 = self.idx_0
+            self.idx_3 = self.idx_0
 
     def set_model_parallelism(self):
         if self.model_parallelism:
-            self.idx_1 = self.idx_0 + 1
+            if self.simple_architecture:
+                self.idx_1 = self.idx_0 + 1
+                self.idx_2 = self.idx_1
+                self.idx_3 = self.idx_0
+            else:
+                self.idx_1 = self.idx_0
+                self.idx_2 = self.idx_0 + 1
+                self.idx_3 = self.idx_2
+                
+        print(f'Indices set to: {self.idx_0} - {self.idx_1} - {self.idx_2} - {self.idx_3}')
 
     def setup_up(self):
         # As last layer I do a deterministic trilinear upsampling
@@ -134,15 +154,27 @@ class VQVAEUpsampling(VQGAN):
     def on_fit_start(self):
         self.set_model_parallelism()
 
-        block = self.decoder.conv_blocks[1]
-        block.res1.conv2.to(self.idx_1)
-        block.res2.to(self.idx_1)
+        self.codebook.to(self.idx_1)
+        self.post_vq_conv.to(self.idx_1)
+        
+        self.decoder.final_block.to(self.idx_1)
+        block0 = self.decoder.conv_blocks[0]
+        block0.to(self.idx_1)
+        block1 = self.decoder.conv_blocks[1]
+        block1.up.to(self.idx_1)
+        block1.res1.norm1.to(self.idx_1)
+        block1.res1.conv1.to(self.idx_1)
+        block1.res1.norm2.to(self.idx_1)
+
+        
+        block1.res1.conv2.to(self.idx_2)
+
+        block1.res2.to(self.idx_3)
         for i, block in enumerate(self.decoder.conv_blocks):
             if i not in (0,1):
-                block.to(self.idx_1)
-        self.decoder.conv_last.to(self.idx_1)
+                block.to(self.idx_3)
+        self.decoder.conv_last.to(self.idx_3)
 
-        print("Let's go!")
 
     def forward(self, x, x_original=None, name='train'):
         if not self.initialized:
@@ -154,7 +186,7 @@ class VQVAEUpsampling(VQGAN):
 
         losses = {}
 
-        x = self.pre_vq_conv(self.encoder(x))
+        x = self.pre_vq_conv(self.encoder(x)).to(self.idx_1)
         vq_output = self.codebook(x)
         x = self.post_vq_conv(vq_output['embeddings'])
 
@@ -172,15 +204,16 @@ class VQVAEUpsampling(VQGAN):
         h = block.res1.norm1(h)
         h = silu(h)
         h = block.res1.conv1(h)
-        h = block.res1.norm2(h).to(self.idx_1)
+        h = block.res1.norm2(h).to(self.idx_2)
         h = silu(h)
         h = block.res1.conv2(h)
 
         if block.res1.in_channels != block.res1.out_channels:
             x_recon = block.res1.conv_shortcut(x_recon)
 
-        x_recon = x_recon.to(self.idx_1)
-        x_recon =  x_recon+h
+        x_recon = x_recon.to(self.idx_2)
+        x_recon =  (x_recon+h).to(self.idx_3)
+        # end res 1
         
         x_recon = block.res2(x_recon)
         
@@ -194,8 +227,8 @@ class VQVAEUpsampling(VQGAN):
         if name=='test': return x_recon
 
         # VQ-VAE losses
-        losses[f'{name}/perplexity'] = vq_output['perplexity']
-        losses[f'{name}/commitment_loss'] = vq_output['commitment_loss']
+        losses[f'{name}/perplexity'] = vq_output['perplexity'].to(self.idx_0)
+        losses[f'{name}/commitment_loss'] = vq_output['commitment_loss'].to(self.idx_0)
 
         # Key modification to the model
         losses[f'{name}/recon_loss'] = F.l1_loss(x_recon, x_original) * self.l1_weight
@@ -210,6 +243,21 @@ class VQVAEUpsampling(VQGAN):
 
         return x_recon, losses, (frames[0].detach().cpu(), frames_recon[0].detach().cpu())
     
+    def on_train_epoch_start(self):
+        # Fix optimizer state
+        if self.model_parallelism:
+            print('Fixing optimizer state to have right device')
+            opt = self.optimizers()
+
+            params = opt.optimizer.param_groups[0]['params']
+
+            state = opt.optimizer.state
+
+            for i, p in enumerate(params):
+                if p in state:
+                    for k, v in state[p].items():
+                        if isinstance(v, torch.Tensor) and v.device != p.device:
+                            state[p][k] = state[p][k].to(p.device)
 
     def training_step(self, batch, batch_idx):
         opt_ae = self.optimizers()

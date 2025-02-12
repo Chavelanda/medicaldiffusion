@@ -11,6 +11,8 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.functional import silu
+from torch.nn import SiLU
 import torch.distributed as dist
 
 from vq_gan_3d.utils import shift_dim, adopt_weight, comp_getattr
@@ -18,16 +20,16 @@ from vq_gan_3d.model.lpips import LPIPS
 from vq_gan_3d.model.codebook import Codebook
 
 
-def silu(x):
-    return x*torch.sigmoid(x)
+# def silu(x):
+#     return x*torch.sigmoid(x)
 
 
-class SiLU(nn.Module):
-    def __init__(self):
-        super(SiLU, self).__init__()
+# class SiLU(nn.Module):
+#     def __init__(self):
+#         super(SiLU, self).__init__()
 
-    def forward(self, x):
-        return silu(x)
+#     def forward(self, x):
+#         return silu(x)
 
 
 def hinge_d_loss(logits_real, logits_fake):
@@ -135,7 +137,8 @@ class VQGAN(pl.LightningModule):
                  gradient_clip_val,
                  discriminator_iter_start,
                  lr,
-                 base_lr):
+                 base_lr,
+                 simple_architecture):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.n_codes = n_codes
@@ -145,8 +148,11 @@ class VQGAN(pl.LightningModule):
         self.image_channels = image_channels
         self.padding_type = padding_type
         self.n_hiddens = n_hiddens
+        self.norm_type = norm_type,
+        self.num_groups = num_groups
+        self.simple_architecture = simple_architecture
 
-        self.encoder = Encoder(n_hiddens, downsample, image_channels, norm_type, padding_type, num_groups,)
+        self.encoder = Encoder(n_hiddens, downsample, image_channels, norm_type, padding_type, num_groups, simple_architecture=simple_architecture)
         
         self.pre_vq_conv = SamePadConv3d(self.encoder.out_channels, embedding_dim, 1, padding_type=padding_type)
         
@@ -154,7 +160,7 @@ class VQGAN(pl.LightningModule):
         
         self.post_vq_conv = SamePadConv3d(embedding_dim, self.encoder.out_channels, 1)
         
-        self.decoder = Decoder(n_hiddens, downsample, image_channels, norm_type, num_groups)
+        self.decoder = Decoder(n_hiddens, downsample, image_channels, norm_type, num_groups, simple_architecture=simple_architecture)
         
         # init padding
         img_size = (d, h, w)
@@ -419,8 +425,10 @@ def Normalize(in_channels, norm_type='group', num_groups=32):
 
 
 class Encoder(nn.Module):
-    def __init__(self, n_hiddens, downsample, image_channel=3, norm_type='group', padding_type='replicate', num_groups=32):
+    def __init__(self, n_hiddens, downsample, image_channel=3, norm_type='group', padding_type='replicate', num_groups=32, simple_architecture=False):
         super().__init__()
+        resblock_cls = SimpleResBlock if simple_architecture else ResBlock
+
         n_times_downsample = np.array([int(math.log2(d)) for d in downsample])
         self.conv_blocks = nn.ModuleList()
         max_ds = n_times_downsample.max()
@@ -435,7 +443,7 @@ class Encoder(nn.Module):
             stride = tuple([2 if d > 0 else 1 for d in n_times_downsample])
             block.down = SamePadConv3d(
                 in_channels, out_channels, 4, stride=stride, padding_type=padding_type)
-            block.res = ResBlock(
+            block.res = resblock_cls(
                 out_channels, out_channels, norm_type=norm_type, num_groups=num_groups)
             self.conv_blocks.append(block)
             n_times_downsample -= 1
@@ -457,8 +465,9 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_hiddens, upsample, image_channel, norm_type='group', num_groups=32):
+    def __init__(self, n_hiddens, upsample, image_channel, norm_type='group', num_groups=32, simple_architecture=False):
         super().__init__()
+        resblock_cls = SimpleResBlock if simple_architecture else ResBlock
 
         n_times_upsample = np.array([int(math.log2(d)) for d in upsample])
         max_us = n_times_upsample.max()
@@ -477,9 +486,9 @@ class Decoder(nn.Module):
             us = tuple([2 if d > 0 else 1 for d in n_times_upsample])
             block.up = SamePadConvTranspose3d(
                 in_channels, out_channels, 4, stride=us)
-            block.res1 = ResBlock(
+            block.res1 = resblock_cls(
                 out_channels, out_channels, norm_type=norm_type, num_groups=num_groups)
-            block.res2 = ResBlock(
+            block.res2 = resblock_cls(
                 out_channels, out_channels, norm_type=norm_type, num_groups=num_groups)
             self.conv_blocks.append(block)
             n_times_upsample -= 1
@@ -535,6 +544,36 @@ class ResBlock(nn.Module):
             x = self.conv_shortcut(x)
 
         return x+h
+
+class SimpleResBlock(nn.Module):
+    def __init__(self, in_channels, out_channels=None, conv_shortcut=False, dropout=0.0, norm_type='group', padding_type='replicate', num_groups=32):
+        super().__init__()
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.use_conv_shortcut = conv_shortcut
+
+        self.norm1 = Normalize(in_channels, norm_type, num_groups=num_groups)
+        self.conv1 = SamePadConv3d(
+            in_channels, out_channels, kernel_size=3, padding_type=padding_type)
+        self.dropout = torch.nn.Dropout(dropout)
+        if self.in_channels != self.out_channels:
+            self.conv_shortcut = SamePadConv3d(
+                in_channels, out_channels, kernel_size=3, padding_type=padding_type)
+        self.norm2 = nn.Identity()
+        self.conv2 = nn.Identity()
+
+    def forward(self, x):
+        h = x
+        h = self.norm1(h)
+        h = silu(h)
+        h = self.conv1(h)
+
+        if self.in_channels != self.out_channels:
+            x = self.conv_shortcut(x)
+
+        return x+h
+
 
 
 # Does not support dilation

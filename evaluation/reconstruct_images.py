@@ -24,7 +24,7 @@ def run(cfg: DictConfig):
     assert os.path.isfile(cfg.model.checkpoint_path), "Checkpoint file for VQGAN must be specified"
     
     ckpt_path = cfg.model.checkpoint_path
-    vqgan = VQVAEUpsampling.load_from_checkpoint(ckpt_path).to(accelerator)
+    vqgan = VQVAEUpsampling.load_from_checkpoint(ckpt_path, map_location=accelerator).to(accelerator)
     vqgan.eval()
 
     save_path = cfg.dataset.save_path

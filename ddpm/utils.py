@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms as T
+import numpy as np
 
 
 def exists(x):
@@ -53,8 +54,11 @@ def is_list_str(x):
 
 
 # tensor of shape (channels, frames, height, width) -> gif
-def video_tensor_to_gif(tensor, path, duration=120, loop=0, optimize=True):
-    tensor = ((tensor - tensor.min()) / (tensor.max() - tensor.min())) * 1.0
+def video_tensor_to_gif(tensor, path, duration=120, loop=0, optimize=True, binarize=True):
+    quantiles = np.quantile(tensor.flatten().cpu().numpy(), [0.05, 0.95])
+    tensor = ((tensor - quantiles[0]) / (quantiles[1] - quantiles[0]))
+    if binarize:
+        tensor = torch.where(tensor > 0.5, 1., 0.)
     images = map(T.ToPILImage(), tensor.unbind(dim=1))
     first_img, *rest_imgs = images
     first_img.save(path, save_all=True, append_images=rest_imgs,

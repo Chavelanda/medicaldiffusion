@@ -205,7 +205,8 @@ class VQVAEUpsampling(VQGAN):
         h = silu(h)
         h = block.res1.conv1(h)
         h = block.res1.norm2(h).to(self.idx_2)
-        h = silu(h)
+        if not self.simple_architecture:
+            h = silu(h)
         h = block.res1.conv2(h)
 
         if block.res1.in_channels != block.res1.out_channels:

@@ -16,6 +16,12 @@ from ddpm.ldm3d_pipeline import LDM3DPipeline
 from ddpm.utils import video_tensor_to_gif
 
 
+loss_dict = {
+    'l1': F.l1_loss,
+    'l2': F.mse_loss,
+    'smooth_l1': F.smooth_l1_loss
+}
+
 def cosine_beta_schedule(timesteps, s=0.008):
     """
     cosine schedule
@@ -54,11 +60,23 @@ class Diffuser(pl.LightningModule):
                 lr=1e-4,
                 results_folder=None,
                 training_timesteps=300,
+                normalize_with_codebook_range=True,
+                mu=0.0,
+                std=1.0,
                 **scheduler_kwargs):
         super().__init__()
-        self.vqvae = VQVAEUpsampling.load_from_checkpoint(vqvae_ckpt)
+        self.vqvae = VQVAEUpsampling.load_from_checkpoint(vqvae_ckpt, map_location=self.device)
         self.vqvae.eval()
         self.vqvae.freeze()
+
+        self.mu = mu
+        self.std = std
+        if normalize_with_codebook_range:
+            self.normalize_fn = self.normalize_cb_range
+            self.denormalize_fn = self.denormalize_cb_range
+        else:
+            self.normalize_fn = self.normalize_mu_std
+            self.denormalize_fn = self.denormalize_mu_std
 
         self.unet = self.setup_unet(in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups)
         
@@ -89,9 +107,10 @@ class Diffuser(pl.LightningModule):
         self.ema_decay = ema_decay
         self.update_ema_every_n_steps = update_ema_every_n_steps
 
-        assert loss in ['l1', 'l2'], 'Loss must be either l1 or l2'
-        self.loss = F.mse_loss if loss == 'l2' else F.l1_loss
-
+        assert loss in ['l1', 'l2', 'smooth_l1'], f'Loss must be either l1, l2 or smooth_l1, got {loss}'
+        self.loss = loss_dict[loss]
+        print(f'Training with {loss}')
+        
         self.lr = lr
 
         self.results_folder = results_folder
@@ -106,9 +125,7 @@ class Diffuser(pl.LightningModule):
         x = self.vqvae.encode(x, quantize=False, include_embeddings=True)
 
         # normalize the image
-        x = ((x - self.vqvae.codebook.embeddings.min()) /
-                     (self.vqvae.codebook.embeddings.max() -
-                      self.vqvae.codebook.embeddings.min())) * 2.0 - 1.0
+        x = self.normalize_fn(x)
 
         # sample the noise
         noise = torch.randn_like(x)
@@ -152,12 +169,13 @@ class Diffuser(pl.LightningModule):
         cond = batch['cond'] if self.use_class_cond else None
         batch_size = x.shape[0]
 
-        timesteps = torch.arange(self.noise_scheduler.config.num_train_timesteps, device=x.device).long().expand(batch_size, -1).T
+        timesteps = torch.arange(self.noise_scheduler.config.num_train_timesteps, device=x.device).long().expand(batch_size, -1).T[0::10]
         outputs = [self(x, cond, use_ema=True, timesteps=t) for t in timesteps]
         loss_l1 = torch.stack([F.l1_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
         loss_l2 = torch.stack([F.mse_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
+        loss_smooth_l1 = torch.stack([F.smooth_l1_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
 
-        self.log_dict({'val/loss_l1': loss_l1, 'val/loss_l2': loss_l2}, prog_bar=True, sync_dist=True, batch_size=batch_size)
+        self.log_dict({'val/loss_l1': loss_l1, 'val/loss_l2': loss_l2, 'val/loss_smooth_l1': loss_smooth_l1}, prog_bar=True, sync_dist=True, batch_size=batch_size)
 
         return loss_l1, loss_l2
     
@@ -226,9 +244,8 @@ class Diffuser(pl.LightningModule):
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.noise_scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
 
-
         # denormalize the latents
-        latents = (((latents + 1.0) / 2.0) * (self.vqvae.codebook.embeddings.max() - self.vqvae.codebook.embeddings.min())) + self.vqvae.codebook.embeddings.min()
+        latents = self.denormalize_fn(latents)
 
         return latents
 
@@ -247,3 +264,23 @@ class Diffuser(pl.LightningModule):
         samples = self.vqvae.decode(latents, quantize=True)
 
         return samples
+    
+    def normalize_cb_range(self, latent):
+        latent = ((latent - self.vqvae.codebook.embeddings.min()) /
+                (self.vqvae.codebook.embeddings.max() -
+                self.vqvae.codebook.embeddings.min())) * 2.0 - 1.0
+        
+        return latent
+    
+    def denormalize_cb_range(self, latent):
+        latent = (((latent + 1.0) / 2.0) * (self.vqvae.codebook.embeddings.max() - self.vqvae.codebook.embeddings.min())) + self.vqvae.codebook.embeddings.min()
+
+        return latent
+    
+    def normalize_mu_std(self, latent):
+        latent = (latent - self.mu) / self.std
+        return latent
+    
+    def denormalize_mu_std(self, latent):
+        latent = (latent * self.std) + self.mu
+        return latent

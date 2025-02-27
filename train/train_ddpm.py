@@ -64,9 +64,7 @@ def run(cfg: DictConfig):
     callbacks.append(TQDMProgressBar(refresh_rate=50))
     # log lr callback
     callbacks.append(LearningRateMonitor(logging_interval='epoch'))
-    callbacks.append(SampleAndSaveCallback(results_folder=results_folder, sample_every_n_epochs=1, save_gif=True, save_image=False, save_func=train_dataset.save))
-
-    noise_scheduler_class = DDPMScheduler
+    # callbacks.append(SampleAndSaveCallback(results_folder=results_folder, sample_every_n_epochs=1, save_gif=True, save_image=False, save_func=train_dataset.save))
 
     # Resume training if needed, otherwise start from scratch
     ckpt_path = cfg.model.load_milestone
@@ -76,7 +74,7 @@ def run(cfg: DictConfig):
     
     diffuser = Diffuser(
         vqvae_ckpt=cfg.model.vqvae_ckpt,
-        noise_scheduler_class=noise_scheduler_class,
+        noise_scheduler_class=DDPMScheduler,
         in_channels=cfg.model.diffusion_num_channels,
         sample_d=cfg.model.diffusion_d,
         sample_h=cfg.model.diffusion_h,
@@ -90,6 +88,9 @@ def run(cfg: DictConfig):
         loss=cfg.model.loss_type,
         lr=cfg.model.train_lr,
         training_timesteps=cfg.model.timesteps,
+        normalize_with_codebook_range=cfg.model.normalize_with_codebook_range,
+        mu=cfg.model.mu,
+        std=cfg.model.std,
     )
     
     # create wandb logger

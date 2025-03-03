@@ -137,9 +137,7 @@ class AllCTsDataset(Dataset):
             item = np.squeeze(item)
 
         #  min-max normalize to the range between 0 and 1 and binarize
-        # maybe is better to take the 5th and 95th percentile to avoid binarization errors due to outliers
-        percentiles = np.percentile(item, [5, 95])
-        item = (item - percentiles[0]) / (percentiles[1] - percentiles[0])
+        item = (item - np.min(item)) / (np.max(item) - np.min(item))
         
         if binarize:
             item = (item > 0.5).astype(float)

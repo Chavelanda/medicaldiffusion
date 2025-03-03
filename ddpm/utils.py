@@ -55,8 +55,7 @@ def is_list_str(x):
 
 # tensor of shape (channels, frames, height, width) -> gif
 def video_tensor_to_gif(tensor, path, duration=120, loop=0, optimize=True, binarize=True):
-    quantiles = np.quantile(tensor.flatten().cpu().numpy(), [0.05, 0.95])
-    tensor = ((tensor - quantiles[0]) / (quantiles[1] - quantiles[0]))
+    tensor = ((tensor - tensor.min())) / (tensor.max() - tensor.min())
     if binarize:
         tensor = torch.where(tensor > 0.5, 1., 0.)
     images = map(T.ToPILImage(), tensor.unbind(dim=1))

@@ -8,7 +8,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from vq_gan_3d.model.vqgan import VQGAN, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d, silu, SiLU, Normalize, ResBlock
+from vq_gan_3d.model.vqgan import VQGAN, crop_to_original, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d, silu, SiLU, Normalize, ResBlock
+from vq_gan_3d.utils import shift_dim
 
 
 class VQVAEUpsampling(VQGAN):
@@ -151,6 +152,19 @@ class VQVAEUpsampling(VQGAN):
         if conv.bias is not None:
             conv.bias.data.zero_()
 
+    
+    def decode(self, latent, quantize=False):
+        if quantize:
+            vq_output = self.codebook(latent)
+            latent = vq_output['encodings']
+        h = F.embedding(latent, self.codebook.embeddings)
+        h = self.post_vq_conv(shift_dim(h, -1, 1))
+        h = self.decoder(h)
+        if self.architecture == 'base':
+            h = crop_to_original(h, self.padding_sizes)
+        return h
+
+
     def on_fit_start(self):
         self.set_model_parallelism()
 
@@ -224,9 +238,13 @@ class VQVAEUpsampling(VQGAN):
         
         x_recon = self.decoder.conv_last(x_recon).to(self.idx_0)
 
-
-        if name=='test': return x_recon
-
+        # For reconstruction inference there is no need to compute the loss
+        if name=='test': 
+            if self.architecture == 'base':
+                return crop_to_original(x_recon, self.padding_sizes) 
+            else:
+                return x_recon
+        
         # VQ-VAE losses
         losses[f'{name}/perplexity'] = vq_output['perplexity'].to(self.idx_0)
         losses[f'{name}/commitment_loss'] = vq_output['commitment_loss'].to(self.idx_0)

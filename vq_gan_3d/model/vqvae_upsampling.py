@@ -71,19 +71,22 @@ class VQVAEUpsampling(VQGAN):
             self.idx_1 = self.idx_0
             self.idx_2 = self.idx_0
             self.idx_3 = self.idx_0
+            self.idx_4 = self.idx_0
 
     def set_model_parallelism(self):
         if self.model_parallelism:
             if self.simple_architecture:
                 self.idx_1 = self.idx_0 + 1
                 self.idx_2 = self.idx_1
-                self.idx_3 = self.idx_0
+                self.idx_3 = self.idx_1
+                self.idx_4 = self.idx_0
             else:
-                self.idx_1 = self.idx_0
-                self.idx_2 = self.idx_0 + 1
-                self.idx_3 = self.idx_2
+                self.idx_1 = self.idx_0 + 1
+                self.idx_2 = self.idx_0 + 2
+                self.idx_3 = self.idx_0
+                self.idx_4 = self.idx_0 + 3
                 
-        print(f'Indices set to: {self.idx_0} - {self.idx_1} - {self.idx_2} - {self.idx_3}')
+        print(f'Indices set to: {self.idx_0} - {self.idx_1} - {self.idx_2} - {self.idx_3} - {self.idx_4}')
 
     def setup_up(self):
         # As last layer I do a deterministic trilinear upsampling
@@ -173,21 +176,21 @@ class VQVAEUpsampling(VQGAN):
         
         self.decoder.final_block.to(self.idx_1)
         block0 = self.decoder.conv_blocks[0]
-        block0.to(self.idx_1)
+        block0.to(self.idx_2)
         block1 = self.decoder.conv_blocks[1]
-        block1.up.to(self.idx_1)
-        block1.res1.norm1.to(self.idx_1)
-        block1.res1.conv1.to(self.idx_1)
-        block1.res1.norm2.to(self.idx_1)
+        block1.up.to(self.idx_2)
+        block1.res1.norm1.to(self.idx_2)
+        block1.res1.conv1.to(self.idx_3)
+        block1.res1.norm2.to(self.idx_3)
 
         
-        block1.res1.conv2.to(self.idx_2)
+        block1.res1.conv2.to(self.idx_3)
 
-        block1.res2.to(self.idx_3)
+        block1.res2.to(self.idx_4)
         for i, block in enumerate(self.decoder.conv_blocks):
             if i not in (0,1):
-                block.to(self.idx_3)
-        self.decoder.conv_last.to(self.idx_3)
+                block.to(self.idx_0)
+        self.decoder.conv_last.to(self.idx_0)
 
 
     def forward(self, x, x_original=None, name='train'):
@@ -202,12 +205,13 @@ class VQVAEUpsampling(VQGAN):
 
         x = self.pre_vq_conv(self.encoder(x)).to(self.idx_1)
         vq_output = self.codebook(x)
-        x = self.post_vq_conv(vq_output['embeddings'])
+        x = vq_output['embeddings']
+        x = self.post_vq_conv(x)
 
         # Decoder is decomposed for model parallelism
         n_blocks = len(self.decoder.conv_blocks)
         
-        x_recon = self.decoder.final_block(x)
+        x_recon = self.decoder.final_block(x).to(self.idx_2)
         
         x_recon = self.decoder.forward_block(0, x_recon)
         
@@ -216,9 +220,9 @@ class VQVAEUpsampling(VQGAN):
         # I have to decompose also res1 to reach best parallelism
         h = x_recon
         h = block.res1.norm1(h)
-        h = silu(h)
+        h = silu(h).to(self.idx_3)
         h = block.res1.conv1(h)
-        h = block.res1.norm2(h).to(self.idx_2)
+        h = block.res1.norm2(h)
         if not self.simple_architecture:
             h = silu(h)
         h = block.res1.conv2(h)
@@ -226,17 +230,17 @@ class VQVAEUpsampling(VQGAN):
         if block.res1.in_channels != block.res1.out_channels:
             x_recon = block.res1.conv_shortcut(x_recon)
 
-        x_recon = x_recon.to(self.idx_2)
-        x_recon =  (x_recon+h).to(self.idx_3)
+        x_recon = x_recon.to(self.idx_3)
+        x_recon =  (x_recon+h).to(self.idx_4)
         # end res 1
         
-        x_recon = block.res2(x_recon)
+        x_recon = block.res2(x_recon).to(self.idx_0)
         
         for i in range(n_blocks - 2):
             i = i + 2
             x_recon = self.decoder.forward_block(i, x_recon)
         
-        x_recon = self.decoder.conv_last(x_recon).to(self.idx_0)
+        x_recon = self.decoder.conv_last(x_recon)
 
         # For reconstruction inference there is no need to compute the loss
         if name=='test': 

@@ -84,7 +84,7 @@ class AllCTsDataset(Dataset):
         else:
             cond = None
        
-        return {'data': img, 'cond': cond}
+        return {'data': img, 'cond': cond, 'name': entry['name']}
     
     def get_cond(self, batch_size=1, random=True, class_idx=None):
         if random:

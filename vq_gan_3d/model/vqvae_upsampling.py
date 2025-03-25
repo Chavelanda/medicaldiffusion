@@ -1,4 +1,4 @@
-import math
+import gc
 from omegaconf import OmegaConf
 from torchsummary import summary
 import wandb
@@ -18,12 +18,17 @@ class VQVAEUpsampling(VQGAN):
     # In all cases the principle guiding the new decoder is the aim of reaching a resolution of the reconstructed image
     # that is equal to the original size provided as attribute of the init method.
 
-    def __init__(self, *args, original_d, original_h, original_w, architecture='base', architecture_down='base', up_factor=1, model_parallelism=False, upsampling_mode='trilinear', simple_architecture=False, **kwargs):
+    def __init__(self, *args, original_d, original_h, original_w, 
+                 architecture='base', architecture_down='base', up_factor=1, upsampling_mode='trilinear', 
+                 model_parallelism=False, simple_architecture=False, 
+                 noise_prob=0, **kwargs):
+        
         super().__init__(*args, simple_architecture=simple_architecture, **kwargs)
+
         self.size = (original_d, original_h, original_w)
         self.architecture_down = architecture_down
         self.architecture = architecture
-        # The up factor is used to decide how much to upsample the image in the decoder as a factor of the original size. 0 not tu upsample 
+        # The up factor is used to decide how much to upsample the image in the decoder as a factor of the original size. 0 to not upsample 
         self.up_factor = up_factor
         self.upsampling_mode = upsampling_mode
 
@@ -31,6 +36,10 @@ class VQVAEUpsampling(VQGAN):
 
         self.simple_architecture = simple_architecture
 
+        self.noise_prob = noise_prob
+        self.noisy_decoder = noise_prob > 0
+        # The generator is instantiated in configure model and setup model parallelism
+        
         print(f'\nSetting up with decoder architecture {architecture} and encoder architecture {architecture_down}\n')
 
         setup_dict = {
@@ -52,9 +61,27 @@ class VQVAEUpsampling(VQGAN):
                 block.res2 = nn.Identity()
             pass
 
+        if self.noisy_decoder:
+            self.setup_noisy_decoder()
+            self.variance_range = [0.05, 0.4]
+
         self.initialized = False
 
         self.save_hyperparameters()
+
+    def setup_noisy_decoder(self):
+        self.encoder.eval()
+        for p in self.encoder.parameters():
+            p.requires_grad = False
+            
+        self.pre_vq_conv.eval()
+        for p in self.pre_vq_conv.parameters():
+            p.requires_grad = False
+            
+        self.codebook.eval()
+        self.codebook.training = False
+        for p in self.codebook.parameters():
+            p.requires_grad = False
 
 
     def configure_model(self):
@@ -65,13 +92,21 @@ class VQVAEUpsampling(VQGAN):
             # Setup model parallelism 1
             if self.device.index is None:
                 self.idx_0 = 'cpu'
+                self.generator = torch.Generator()
             else:
                 self.idx_0 = self.device.index
+                self.generator = torch.Generator(device=self.device)
             
             self.idx_1 = self.idx_0
             self.idx_2 = self.idx_0
             self.idx_3 = self.idx_0
             self.idx_4 = self.idx_0
+        if self.model_parallelism and not self.simple_architecture:
+            self.idx_1 = self.idx_0 + 1
+            self.codebook.to(self.idx_1)
+            self.post_vq_conv.to(self.idx_1)
+            self.decoder.final_block.to(self.idx_1)
+            
 
     def set_model_parallelism(self):
         if self.model_parallelism:
@@ -171,6 +206,7 @@ class VQVAEUpsampling(VQGAN):
     def on_fit_start(self):
         self.set_model_parallelism()
 
+        self.generator = torch.Generator(device=f'cuda:{self.idx_1}')
         self.codebook.to(self.idx_1)
         self.post_vq_conv.to(self.idx_1)
         
@@ -193,7 +229,7 @@ class VQVAEUpsampling(VQGAN):
         self.decoder.conv_last.to(self.idx_0)
 
 
-    def forward(self, x, x_original=None, name='train'):
+    def forward(self, x, x_original=None, name='train', batch_idx=0, dataloader_idx=0):
         if not self.initialized:
             self.configure_model()
         # Pad image so that it is divisible by downsampling scale
@@ -204,6 +240,24 @@ class VQVAEUpsampling(VQGAN):
         losses = {}
 
         x = self.pre_vq_conv(self.encoder(x)).to(self.idx_1)
+
+        if self.noisy_decoder and name == 'train' and torch.rand(1) < self.noise_prob:
+            if batch_idx == 0:
+                gc.collect()
+                torch.cuda.empty_cache()
+            var = torch.rand(B, device=x.device) * (self.variance_range[1]- self.variance_range[0]) + self.variance_range[0]
+            noise = self.denormalize_noise(torch.randn_like(x))
+            x = x + noise * var.reshape(-1, 1, 1, 1, 1)
+        elif self.noisy_decoder and name == 'val' and dataloader_idx > 0:
+            if batch_idx == 0:
+                gc.collect()
+                torch.cuda.empty_cache()
+            self.generator.manual_seed(batch_idx)
+            var = torch.rand((B,), device=x.device, generator=self.generator) * (self.variance_range[1]- self.variance_range[0]) + self.variance_range[0]
+            noise = torch.randn(x.size(), generator=self.generator, dtype=x.dtype, layout=x.layout, device=x.device)
+            noise = self.denormalize_noise(noise)
+            x = x + noise * var.reshape(-1, 1, 1, 1, 1)
+
         vq_output = self.codebook(x)
         x = vq_output['embeddings']
         x = self.post_vq_conv(x)
@@ -282,6 +336,11 @@ class VQVAEUpsampling(VQGAN):
                         if isinstance(v, torch.Tensor) and v.device != p.device:
                             state[p][k] = state[p][k].to(p.device)
 
+        # Fix noisy decoder training
+        if self.noisy_decoder:
+            self.setup_noisy_decoder()
+
+
     def training_step(self, batch, batch_idx):
         opt_ae = self.optimizers()
         
@@ -292,7 +351,7 @@ class VQVAEUpsampling(VQGAN):
             x_original = batch['data_original']
 
         
-        _, losses, _ = self.forward(x, x_original, name='train')
+        _, losses, _ = self.forward(x, x_original, name='train', batch_idx=batch_idx)
         
         # Losses VQ-VAE
         loss_ae = losses['train/recon_loss'] + losses['train/commitment_loss'] + losses['train/perceptual_loss']
@@ -306,14 +365,14 @@ class VQVAEUpsampling(VQGAN):
             
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         x = batch['data']
         if self.architecture == 'base':
             x_original = x.detach().clone()
         else:
             x_original = batch['data_original']
 
-        _, losses, frames = self.forward(x, x_original, name='val')
+        _, losses, frames = self.forward(x, x_original, name='val', batch_idx=batch_idx, dataloader_idx=dataloader_idx)
         
         loss_ae = losses['val/recon_loss'] + losses['val/commitment_loss'] + losses['val/perceptual_loss']
         losses['val/loss_ae'] = loss_ae
@@ -321,9 +380,15 @@ class VQVAEUpsampling(VQGAN):
 
         # Log image
         if batch_idx == 0:
-            self.logger.experiment.log({'samples': [wandb.Image(frames[0], caption='original'), wandb.Image(frames[1].to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
+            key = 'samples' if dataloader_idx == 0 else f'dl{dataloader_idx}_samples'
+            self.logger.experiment.log({key: [wandb.Image(frames[0], caption='original'), wandb.Image(frames[1].to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
         
-        self.log_dict(losses, prog_bar=True, sync_dist=True)
+        # Used just when validating with more datasets
+        if dataloader_idx != 0:
+            # Update keys
+            losses = {f'dl{dataloader_idx}_{k}': v for k, v in losses.items()}
+
+        self.log_dict(losses, prog_bar=True, sync_dist=True, add_dataloader_idx=True)
 
     def test_step(self, batch, batch_idx):
         x = batch['data']
@@ -347,6 +412,11 @@ class VQVAEUpsampling(VQGAN):
         plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau-ae'}
         
         return [opt_ae], [ae_scheduler, plateau_scheduler] 
+    
+    def denormalize_noise(self, noise):
+        noise = (((noise + 1.0) / 2.0) * (self.codebook.embeddings.max() - self.codebook.embeddings.min())) + self.codebook.embeddings.min()
+
+        return noise
 
 
 class ResidualSamePadConv3d(nn.Module):

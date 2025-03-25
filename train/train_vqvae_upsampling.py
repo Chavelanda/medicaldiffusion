@@ -25,6 +25,10 @@ def run(cfg: DictConfig):
     val_dataloader = DataLoader(val_dataset, batch_size=cfg.model.batch_size,
                                 shuffle=False, num_workers=cfg.model.num_workers)
     
+    # Handle double validation with noisy decoder 
+    if cfg.model.noise_prob > 0:
+        val_dataloader = [val_dataloader, val_dataloader]
+    
     base_dir = os.path.join(cfg.model.default_root_dir, cfg.dataset.name, cfg.model.default_root_dir_postfix, cfg.model.run_name)
     print("Setting default_root_dir to {}".format(base_dir))
 
@@ -51,6 +55,9 @@ def run(cfg: DictConfig):
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
+    if cfg.model.noise_prob > 0:
+        callbacks.append(ModelCheckpoint(monitor='dl1_val/recon_loss',
+                     save_top_k=1, mode='min', dirpath=base_dir, filename='best_noisy_val-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_epochs=30, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
     callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
@@ -98,7 +105,8 @@ def run(cfg: DictConfig):
                             architecture=cfg.model.architecture, 
                             architecture_down=cfg.model.architecture_down,
                             model_parallelism=cfg.model.model_parallelism,
-                            simple_architecture=cfg.model.simple_architecture)
+                            simple_architecture=cfg.model.simple_architecture,
+                            noise_prob=cfg.model.noise_prob,)
         
     # Setup model parallelism
     if cfg.model.model_parallelism:
@@ -125,7 +133,7 @@ def run(cfg: DictConfig):
         strategy='auto',
         log_every_n_steps=50,
         # test
-        fast_dev_run=False
+        fast_dev_run=False,
     )
 
     # Updating wandb configs

@@ -1,3 +1,4 @@
+import gc
 from typing import Optional
 import inspect
 from einops import rearrange
@@ -8,19 +9,14 @@ import torch.nn.functional as F
 from torch.optim.swa_utils import AveragedModel
 
 import pytorch_lightning as pl
-from diffusers.training_utils import EMAModel
+
+from diffusers import DDPMScheduler, FlowMatchEulerDiscreteScheduler
 
 from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
 from ddpm.unet3d import Unet3D
 from ddpm.ldm3d_pipeline import LDM3DPipeline
 from ddpm.utils import video_tensor_to_gif
 
-
-loss_dict = {
-    'l1': F.l1_loss,
-    'l2': F.mse_loss,
-    'smooth_l1': F.smooth_l1_loss
-}
 
 def cosine_beta_schedule(timesteps, s=0.008):
     """
@@ -36,10 +32,34 @@ def cosine_beta_schedule(timesteps, s=0.008):
     return torch.clip(betas, 0, 0.9999)
 
 
+loss_dict = {
+    'l1': F.l1_loss,
+    'l2': F.mse_loss,
+    'smooth_l1': F.smooth_l1_loss
+}
+
+# The structure is the following:
+# scheduler_name: (scheduler_class, scheduler_params, forward_func, forward_args, ground_truth)
+# The ground truth is a function of (sample, noise, model_output, timesteps)
+scheduler_dict = {
+    'ddpm': (DDPMScheduler, 
+             {'trained_betas': None, # to handle later because it depends on training_timesteps
+            'prediction_type': 'epsilon',
+            'variance_type': 'fixed_small_log',},
+            lambda scheduler, **kwargs: scheduler.add_noise(**kwargs),
+            ('original_samples', 'noise', 'timesteps'),
+            lambda sample, noise, timesteps: noise),
+    'fm': (FlowMatchEulerDiscreteScheduler, 
+           {},
+           lambda scheduler, sample, noise, timestep: scheduler.scale_noise(sample=sample, noise=noise, timestep=timestep),
+           ('sample', 'noise', 'timestep'),
+           lambda sample, noise, timesteps: noise - sample),
+}
+
+
 class Diffuser(pl.LightningModule):
     def __init__(self, 
                 vqvae_ckpt,
-                noise_scheduler_class, 
                 in_channels=1,
                 sample_d=64,
                 sample_h=64,
@@ -59,6 +79,8 @@ class Diffuser(pl.LightningModule):
                 loss='l2', 
                 lr=1e-4,
                 results_folder=None,
+                noise_scheduler_class=None, # Kept for consistency with past experiments (until ddpm-l1-d8)
+                scheduler_name='ddpm',
                 training_timesteps=300,
                 normalize_with_codebook_range=True,
                 mu=0.0,
@@ -80,33 +102,36 @@ class Diffuser(pl.LightningModule):
 
         self.unet = self.setup_unet(in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups)
         
-        scheduler_params = {
-            'trained_betas': cosine_beta_schedule(training_timesteps).detach().cpu().numpy(),
-            'prediction_type': 'epsilon',
-            'variance_type': 'fixed_small_log',
-        }
+        self.scheduler_name = scheduler_name
+
+        self.training_timesteps = training_timesteps
+
+        noise_scheduler_class = scheduler_dict[scheduler_name][0]
+        scheduler_params = scheduler_dict[scheduler_name][1]
+
+        # Handle ddpm trained_betas
+        if 'trained_betas' in scheduler_params:
+            scheduler_params['trained_betas'] = cosine_beta_schedule(self.training_timesteps).detach().cpu().numpy()
 
         for key, value in scheduler_kwargs.items():
             scheduler_params[key] = value
 
         self.noise_scheduler = noise_scheduler_class(num_train_timesteps=training_timesteps, 
                                                      **scheduler_params)
-        self.training_timesteps = training_timesteps
+       
 
         self.ema_model = AveragedModel(self.unet, 
                                        multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(ema_decay),
                                        use_buffers=True,
                                        )
+        self.ema_decay = ema_decay
+        self.update_ema_every_n_steps = update_ema_every_n_steps
 
-        self.pipeline = LDM3DPipeline(self.ema_model.module, self.noise_scheduler, self.vqvae)
 
         self.use_class_cond = use_class_cond
         self.null_cond_prob = null_cond_prob
         self.cond_dim = cond_dim
         
-        self.ema_decay = ema_decay
-        self.update_ema_every_n_steps = update_ema_every_n_steps
-
         assert loss in ['l1', 'l2', 'smooth_l1'], f'Loss must be either l1, l2 or smooth_l1, got {loss}'
         self.loss = loss_dict[loss]
         print(f'Training with {loss}')
@@ -133,26 +158,37 @@ class Diffuser(pl.LightningModule):
         # sample a random timestep for each image
         if timesteps is None:
             batch_size = x.shape[0]
-            timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device)
+            t_idx = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (batch_size,), device=x.device)
+            timesteps = self.noise_scheduler.timesteps[t_idx].to(x.device)
 
         # add noise to the clean images according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
-        noisy_x = self.noise_scheduler.add_noise(x, noise, timesteps)
+        forward_func = scheduler_dict[self.scheduler_name][2]
+        forward_args = {k: v for k, v in zip(scheduler_dict[self.scheduler_name][3], (x, noise, timesteps))}
+        noisy_x = forward_func(self.noise_scheduler, **forward_args)
 
         # predict the noise residual
         if use_ema:
-            noise_prediction = self.ema_model(noisy_x, timesteps, cond, self.null_cond_prob)
+            model_output = self.ema_model(noisy_x, timesteps, cond, self.null_cond_prob)
         else:
-            noise_prediction = self.unet(noisy_x, timesteps, cond, self.null_cond_prob)
+            model_output = self.unet(noisy_x, timesteps, cond, self.null_cond_prob)
 
-        return noise_prediction, noise
+        # It depends on the scheduler
+        ground_truth = scheduler_dict[self.scheduler_name][4](x, noise, timesteps)
+
+        return model_output, ground_truth
     
+    def on_train_epoch_start(self):
+        gc.collect()
+        torch.cuda.empty_cache()
+        self.noise_scheduler.set_timesteps(self.training_timesteps, device=self.device)
+
     def training_step(self, batch):
         x = batch['data']
         cond = batch['cond'] if self.use_class_cond else None
         
-        noise_prediction, noise = self(x, cond)
-        loss = self.loss(noise_prediction, noise)
+        model_output, ground_truth = self(x, cond)
+        loss = self.loss(model_output, ground_truth)
 
         self.log_dict({'train/loss': loss}, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
 
@@ -169,11 +205,11 @@ class Diffuser(pl.LightningModule):
         cond = batch['cond'] if self.use_class_cond else None
         batch_size = x.shape[0]
 
-        timesteps = torch.arange(self.noise_scheduler.config.num_train_timesteps, device=x.device).long().expand(batch_size, -1).T[0::10]
+        timesteps = self.noise_scheduler.timesteps[::10].expand(batch_size, -1).T.to(self.device)
         outputs = [self(x, cond, use_ema=True, timesteps=t) for t in timesteps]
-        loss_l1 = torch.stack([F.l1_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
-        loss_l2 = torch.stack([F.mse_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
-        loss_smooth_l1 = torch.stack([F.smooth_l1_loss(noise_prediction, noise) for noise_prediction, noise in outputs]).mean()
+        loss_l1 = torch.stack([F.l1_loss(pred, gt) for pred, gt in outputs]).mean()
+        loss_l2 = torch.stack([F.mse_loss(pred, gt) for pred, gt in outputs]).mean()
+        loss_smooth_l1 = torch.stack([F.smooth_l1_loss(pred, gt) for pred, gt in outputs]).mean()
 
         self.log_dict({'val/loss_l1': loss_l1, 'val/loss_l2': loss_l2, 'val/loss_smooth_l1': loss_smooth_l1}, prog_bar=True, sync_dist=True, batch_size=batch_size)
 
@@ -224,9 +260,6 @@ class Diffuser(pl.LightningModule):
         )
         latents = latents.to(self.device)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.noise_scheduler.init_noise_sigma
-
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.noise_scheduler.step).parameters.keys())
 
@@ -235,14 +268,13 @@ class Diffuser(pl.LightningModule):
             extra_kwargs["eta"] = eta
 
         for t in tqdm(self.noise_scheduler.timesteps):
-            latent_model_input = self.noise_scheduler.scale_model_input(latents, t)
             # predict the noise residual
             if cond_scale is not None:
-                noise_prediction = self.ema_model.module.forward_with_cond_scale(latent_model_input, t.expand(batch_size), cond=cond, cond_scale=cond_scale)
+                model_output = self.ema_model.module.forward_with_cond_scale(latents, t.expand(batch_size), cond=cond, cond_scale=cond_scale)
             else:    
-                noise_prediction = self.ema_model(latent_model_input, t.expand(batch_size), cond=cond)
+                model_output = self.ema_model(latents, t.expand(batch_size), cond=cond)
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.noise_scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
+            latents = self.noise_scheduler.step(model_output=model_output, timestep=t, sample=latents, **extra_kwargs).prev_sample
 
         # denormalize the latents
         latents = self.denormalize_fn(latents)

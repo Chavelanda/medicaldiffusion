@@ -1,7 +1,9 @@
 import os
+import gc
 from einops import rearrange
 from pytorch_lightning.callbacks import Callback
 import torch.nn.functional as F
+import torch
 
 from ddpm.utils import video_tensor_to_gif
 
@@ -31,6 +33,9 @@ class SampleAndSaveCallback(Callback):
         if trainer.current_epoch % self.sample_every_n_epochs != 0 or pl_module.global_rank != 0:
             return
         
+        gc.collect()
+        torch.cuda.empty_cache()
+        
         image = pl_module.sample_with_random_cond()
         name = f'epoch_{trainer.current_epoch}_step_{trainer.global_step}'
 
@@ -43,3 +48,6 @@ class SampleAndSaveCallback(Callback):
                 image, '(i j) c f h w -> c f (i h) (j w)', i=1)
             video_path = os.path.join(self.results_folder, f'{name}.gif')
             video_tensor_to_gif(gif, video_path)
+        
+        gc.collect()
+        torch.cuda.empty_cache()

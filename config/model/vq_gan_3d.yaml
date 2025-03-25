@@ -33,6 +33,8 @@ padding_type: replicate
 architecture: base
 architecture_down: base
 
+noise_prob: 0
+
 l1_weight: 4.0
 perceptual_weight: 4.0
 

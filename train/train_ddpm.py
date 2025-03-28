@@ -75,6 +75,7 @@ def run(cfg: DictConfig):
     
     diffuser = Diffuser(
         vqvae_ckpt=cfg.model.vqvae_ckpt,
+        backbone=cfg.model.backbone,
         in_channels=cfg.model.diffusion_num_channels,
         sample_d=cfg.model.diffusion_d,
         sample_h=cfg.model.diffusion_h,

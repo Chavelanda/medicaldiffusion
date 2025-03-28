@@ -13,9 +13,7 @@ import pytorch_lightning as pl
 from diffusers import DDPMScheduler, FlowMatchEulerDiscreteScheduler
 
 from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
-from ddpm.unet3d import Unet3D
-from ddpm.ldm3d_pipeline import LDM3DPipeline
-from ddpm.utils import video_tensor_to_gif
+from ddpm import Unet3D, DiT_S_2
 
 
 def cosine_beta_schedule(timesteps, s=0.008):
@@ -56,10 +54,27 @@ scheduler_dict = {
            lambda sample, noise, timesteps: noise - sample),
 }
 
+def setup_unet(in_channels, sample_d, sample_h, sample_w, dim, dim_mults, attn_heads, attn_dim_head, use_class_cond, cond_dim, init_kernel_size, use_sparse_linear_attn, resnet_groups, **kwargs):
+    return Unet3D(in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups)
+
+def setup_dit(in_channels, sample_d, sample_h, sample_w, cond_dim, null_cond_prob, **kwargs):
+    return DiT_S_2(input_size=(sample_d, sample_h, sample_w), in_channels=in_channels, class_dropout_prob=null_cond_prob, num_classes=cond_dim)
+
+# Dict containing setupfunc, forward func and forward with cfg func
+backbone_dict = {
+    'unet': (setup_unet, 
+             lambda den, x, t, y, p: den(x=x, time=t, cond=y, null_cond_prob=p),
+             lambda den, x, t, y, cond_scale: den.forward_with_cond_scale(x, t, cond=y, cond_scale=cond_scale)),
+    'dit': (setup_dit, 
+            lambda den, x ,t, y, **kwargs : den(x=x, t=t, y=y),
+            lambda den, x, t, y, cond_scale: den.forward_with_cfg(x=x, t=t, y=y, cfg_scale=cond_scale))
+}
+
 
 class Diffuser(pl.LightningModule):
     def __init__(self, 
                 vqvae_ckpt,
+                backbone='unet',
                 in_channels=1,
                 sample_d=64,
                 sample_h=64,
@@ -87,9 +102,14 @@ class Diffuser(pl.LightningModule):
                 std=1.0,
                 **scheduler_kwargs):
         super().__init__()
-        self.vqvae = VQVAEUpsampling.load_from_checkpoint(vqvae_ckpt, map_location=self.device)
+        self.vqvae = VQVAEUpsampling.load_from_checkpoint(vqvae_ckpt, map_location=self.device, strict=False)
         self.vqvae.eval()
         self.vqvae.freeze()
+
+        self.in_channels = in_channels
+        self.sample_d = sample_d
+        self.sample_h = sample_h
+        self.sample_w = sample_w
 
         self.mu = mu
         self.std = std
@@ -100,8 +120,11 @@ class Diffuser(pl.LightningModule):
             self.normalize_fn = self.normalize_mu_std
             self.denormalize_fn = self.denormalize_mu_std
 
-        self.unet = self.setup_unet(in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups)
-        
+        self.backbone = backbone
+        self.denoiser = backbone_dict[self.backbone][0](in_channels=in_channels, sample_d=sample_d, sample_h=sample_h, sample_w=sample_w, dim=dim, dim_mults=dim_mults, attn_heads=attn_heads, attn_dim_head=attn_dim_head, use_class_cond=use_class_cond, cond_dim=cond_dim, init_kernel_size=init_kernel_size, use_sparse_linear_attn=use_sparse_linear_attn, resnet_groups=resnet_groups, null_cond_prob=null_cond_prob,)
+        self.denoiser_forward = backbone_dict[self.backbone][1]
+        self.denoiser_forward_cfg = backbone_dict[self.backbone][2]
+
         self.scheduler_name = scheduler_name
 
         self.training_timesteps = training_timesteps
@@ -120,7 +143,7 @@ class Diffuser(pl.LightningModule):
                                                      **scheduler_params)
        
 
-        self.ema_model = AveragedModel(self.unet, 
+        self.ema_model = AveragedModel(self.denoiser, 
                                        multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(ema_decay),
                                        use_buffers=True,
                                        )
@@ -141,9 +164,6 @@ class Diffuser(pl.LightningModule):
         self.results_folder = results_folder
 
         self.save_hyperparameters()
-
-    def setup_unet(self, **kwargs):
-        return Unet3D(**kwargs)
 
     def forward(self, x, cond=None, use_ema=False, timesteps=None):
         # encode the image
@@ -169,9 +189,9 @@ class Diffuser(pl.LightningModule):
 
         # predict the noise residual
         if use_ema:
-            model_output = self.ema_model(noisy_x, timesteps, cond, self.null_cond_prob)
+            model_output = self.denoiser_forward(self.ema_model, x=noisy_x, t=timesteps, y=cond, p=self.null_cond_prob)
         else:
-            model_output = self.unet(noisy_x, timesteps, cond, self.null_cond_prob)
+            model_output = self.denoiser_forward(self.denoiser, x=noisy_x, t=timesteps, y=cond, p=self.null_cond_prob)
 
         # It depends on the scheduler
         ground_truth = scheduler_dict[self.scheduler_name][4](x, noise, timesteps)
@@ -198,7 +218,7 @@ class Diffuser(pl.LightningModule):
         super().on_before_zero_grad(optimizer)
         # update the EMA model
         if self.global_step % self.update_ema_every_n_steps == 0:
-            self.ema_model.update_parameters(self.unet)
+            self.ema_model.update_parameters(self.denoiser)
     
     def validation_step(self, batch):
         x = batch['data']
@@ -216,14 +236,14 @@ class Diffuser(pl.LightningModule):
         return loss_l1, loss_l2
     
     def sample_with_random_cond(self):
-        self.unet.eval()
+        self.denoiser.eval()
         self.ema_model.eval()
         cond = torch.randint(0, self.cond_dim, (1,), device=self.device) if self.use_class_cond else None
         print('\nSampling with condition:', cond)
         return self.sample(batch_size=1, num_inference_steps=self.training_timesteps, cond=cond)
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.unet.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.denoiser.parameters(), lr=self.lr)
         return optimizer
 
     @torch.no_grad()
@@ -255,7 +275,7 @@ class Diffuser(pl.LightningModule):
         self.noise_scheduler.set_timesteps(num_inference_steps, device=self.device)
 
         latents = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_d, self.unet.sample_h, self.unet.sample_w),
+            (batch_size, self.in_channels, self.sample_d, self.sample_h, self.sample_w),
             generator=generator,
         )
         latents = latents.to(self.device)
@@ -270,9 +290,9 @@ class Diffuser(pl.LightningModule):
         for t in tqdm(self.noise_scheduler.timesteps):
             # predict the noise residual
             if cond_scale is not None:
-                model_output = self.ema_model.module.forward_with_cond_scale(latents, t.expand(batch_size), cond=cond, cond_scale=cond_scale)
-            else:    
-                model_output = self.ema_model(latents, t.expand(batch_size), cond=cond)
+                model_output = self.denoiser_forward_cfg(self.ema_model.module, x=latents, t=t.expand(batch_size), y=cond, cond_scale=cond_scale)
+            else:
+                model_output = self.denoiser_forward(self.ema_model, x=latents, t=t.expand(batch_size), y=cond, p=0.)
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.noise_scheduler.step(model_output=model_output, timestep=t, sample=latents, **extra_kwargs).prev_sample
 

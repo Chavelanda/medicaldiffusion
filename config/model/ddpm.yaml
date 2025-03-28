@@ -12,6 +12,8 @@ normalize_with_codebook_range: True # If False, set mu and std appropriately
 mu: 0.0
 std: 1.0
 
+backbone: 'unet'
+
 # Have to be derived from VQ-GAN Latent space dimensions -> normally ceil(dim/4) 
 # Maybe derive automatically??
 diffusion_d: ???
@@ -19,8 +21,10 @@ diffusion_h: ???
 diffusion_w: ???
 diffusion_num_channels: 8
 
+# Unet params. When using DiT they are useless
 dim: 32
 dim_mults: 
+
 results_folder: checkpoints/ddpm
 results_folder_postfix: ''
 load_milestone: 
@@ -34,6 +38,7 @@ ema_decay: 0.995 # exponential moving average decay
 check_val_every_n_epoch: 10
 sample: True
 
+# cond and use_class_cond are always true for DiT
 cond: True # Conditional training?
 use_class_cond: True # If true, one-hot class labels are embedded and used as conditioning. If false, condition is used as it is.
 null_cond_prob: 0. # Probability of using null condition

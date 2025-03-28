@@ -17,6 +17,8 @@ import logging
 import imageio.core.util
 logging.getLogger("imageio_ffmpeg").setLevel(logging.ERROR)
 
+from scipy.ndimage.morphology import distance_transform_edt
+
 
 class ForkedPdb(pdb_original.Pdb):
     """A Pdb subclass that may be used
@@ -177,3 +179,63 @@ def visualize_tensors(t, name=None, nest=0):
     else:
         print(t)
     return ""
+
+
+def dc(input1, input2):
+    """
+    Dice coefficient
+
+    Computes the Dice coefficient (also known as Sorensen index) between the binary
+    objects in two images.
+
+    The metric is defined as
+
+    , where :math:`A` is the first and :math:`B` the second set of samples (here: binary objects).
+
+    Parameters
+    ----------
+    input1 : array_like
+        Input data containing objects. Can be any type but will be converted
+        into binary: background where 0, object everywhere else.
+    input2 : array_like
+        Input data containing objects. Can be any type but will be converted
+        into binary: background where 0, object everywhere else.
+
+    Returns
+    -------
+    dc : float
+        The Dice coefficient between the object(s) in ```input1``` and the
+        object(s) in ```input2```. It ranges from 0 (no overlap) to 1 (perfect overlap).
+
+    Notes
+    -----
+    This is a real metric.
+    """
+    input1 = np.atleast_1d(input1.astype(np.bool))
+    input2 = np.atleast_1d(input2.astype(np.bool))
+
+    intersection = np.count_nonzero(input1 & input2)
+
+    size_i1 = np.count_nonzero(input1)
+    size_i2 = np.count_nonzero(input2)
+
+    try:
+        dc = 2. * intersection / float(size_i1 + size_i2)
+    except ZeroDivisionError:
+        dc = 0.0
+
+    return dc
+
+def bdsc(pred, target, voxelspacing, distance, dt=None):
+    if dt is None:
+        dt = distance_transform_edt(~(target.numpy() > 0), sampling=voxelspacing)
+
+    pred_masked = pred.numpy()
+    target_masked = target.numpy()
+
+    pred_masked[dt > distance] = 0
+    target_masked[dt > distance] = 0
+
+    return dc(pred_masked, target_masked)
+
+

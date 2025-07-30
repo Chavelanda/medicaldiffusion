@@ -19,7 +19,7 @@ def run(cfg: DictConfig):
     
     bs = cfg.model.batch_size
 
-    dataloader1 = DataLoader(dataset1, batch_size=1, shuffle=False, num_workers=cfg.model.num_workers)
+    dataloader1 = DataLoader(dataset1, batch_size=1, shuffle=False, num_workers=0)
     dataloader2 = DataLoader(dataset2, batch_size=bs, shuffle=False, num_workers=cfg.model.num_workers)
 
     accelerator = cfg.model.accelerator
@@ -39,11 +39,13 @@ def run(cfg: DictConfig):
 
     with torch.no_grad():
         for i, b1 in enumerate(tqdm(dataloader1)):
-            for j, b2 in enumerate(dataloader2):
-                b1['data'] = b1['data'].to(accelerator)
-                b2['data'] = b2['data'].to(accelerator)
+            
+            b1['data'] = b1['data'].to(accelerator)
+            x1 = model.test_step(b1)
 
-                x1 = model.test_step(b1)
+            for j, b2 in enumerate(dataloader2):
+                
+                b2['data'] = b2['data'].to(accelerator)
                 x2 = model.test_step(b2)
 
                 x = torch.cat((x1, x2), dim=0)

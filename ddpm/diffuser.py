@@ -1,5 +1,6 @@
 import gc
-from typing import Optional
+from typing import Optional, Union, Tuple, List
+import numpy as np
 import inspect
 from einops import rearrange
 from tqdm import tqdm
@@ -13,7 +14,8 @@ import pytorch_lightning as pl
 from diffusers import DDPMScheduler, FlowMatchEulerDiscreteScheduler
 
 from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
-from ddpm import Unet3D, DiT_S_2
+from ddpm import Unet3D, DiT_S_2, DiT_B_4
+from ddpm.fmd_scheduler import FlowMatchDistanceEulerDiscreteScheduler
 
 
 def cosine_beta_schedule(timesteps, s=0.008):
@@ -46,12 +48,18 @@ scheduler_dict = {
             'variance_type': 'fixed_small_log',},
             lambda scheduler, **kwargs: scheduler.add_noise(**kwargs),
             ('original_samples', 'noise', 'timesteps'),
-            lambda sample, noise, timesteps: noise),
+            lambda sample, noisy_sample, noise, timesteps: noise),
     'fm': (FlowMatchEulerDiscreteScheduler, 
            {},
            lambda scheduler, sample, noise, timestep: scheduler.scale_noise(sample=sample, noise=noise, timestep=timestep),
            ('sample', 'noise', 'timestep'),
-           lambda sample, noise, timesteps: noise - sample),
+           lambda sample, noisy_sample, noise, timesteps: noise - sample),
+    'fm_d': (FlowMatchDistanceEulerDiscreteScheduler,
+             {},
+             lambda scheduler, sample, noise, timestep: scheduler.scale_noise(sample=sample, noise=noise, timestep=timestep),
+             ('sample', 'noise', 'timestep'),
+             lambda sample, noisy_sample, noise, timesteps: noisy_sample - sample
+             )
 }
 
 def setup_unet(in_channels, sample_d, sample_h, sample_w, dim, dim_mults, attn_heads, attn_dim_head, use_class_cond, cond_dim, init_kernel_size, use_sparse_linear_attn, resnet_groups, **kwargs):
@@ -60,12 +68,18 @@ def setup_unet(in_channels, sample_d, sample_h, sample_w, dim, dim_mults, attn_h
 def setup_dit(in_channels, sample_d, sample_h, sample_w, cond_dim, null_cond_prob, **kwargs):
     return DiT_S_2(input_size=(sample_d, sample_h, sample_w), in_channels=in_channels, class_dropout_prob=null_cond_prob, num_classes=cond_dim)
 
+def setup_ditb4(in_channels, sample_d, sample_h, sample_w, cond_dim, null_cond_prob, **kwargs):
+    return DiT_B_4(input_size=(sample_d, sample_h, sample_w), in_channels=in_channels, class_dropout_prob=null_cond_prob, num_classes=cond_dim)
+
 # Dict containing setupfunc, forward func and forward with cfg func
 backbone_dict = {
     'unet': (setup_unet, 
              lambda den, x, t, y, p: den(x=x, time=t, cond=y, null_cond_prob=p),
              lambda den, x, t, y, cond_scale: den.forward_with_cond_scale(x, t, cond=y, cond_scale=cond_scale)),
     'dit': (setup_dit, 
+            lambda den, x ,t, y, **kwargs : den(x=x, t=t, y=y),
+            lambda den, x, t, y, cond_scale: den.forward_with_cfg(x=x, t=t, y=y, cfg_scale=cond_scale)),
+    'ditb4': (setup_ditb4, 
             lambda den, x ,t, y, **kwargs : den(x=x, t=t, y=y),
             lambda den, x, t, y, cond_scale: den.forward_with_cfg(x=x, t=t, y=y, cfg_scale=cond_scale))
 }
@@ -194,7 +208,7 @@ class Diffuser(pl.LightningModule):
             model_output = self.denoiser_forward(self.denoiser, x=noisy_x, t=timesteps, y=cond, p=self.null_cond_prob)
 
         # It depends on the scheduler
-        ground_truth = scheduler_dict[self.scheduler_name][4](x, noise, timesteps)
+        ground_truth = scheduler_dict[self.scheduler_name][4](x, noisy_x, noise, timesteps)
 
         return model_output, ground_truth
     
@@ -225,7 +239,7 @@ class Diffuser(pl.LightningModule):
         cond = batch['cond'] if self.use_class_cond else None
         batch_size = x.shape[0]
 
-        timesteps = self.noise_scheduler.timesteps[::10].expand(batch_size, -1).T.to(self.device)
+        timesteps = torch.flip(self.noise_scheduler.timesteps, dims=(0,))[::10].expand(batch_size, -1).T.to(self.device)
         outputs = [self(x, cond, use_ema=True, timesteps=t) for t in timesteps]
         loss_l1 = torch.stack([F.l1_loss(pred, gt) for pred, gt in outputs]).mean()
         loss_l2 = torch.stack([F.mse_loss(pred, gt) for pred, gt in outputs]).mean()
@@ -254,8 +268,9 @@ class Diffuser(pl.LightningModule):
         eta: float = 0.0,
         num_inference_steps: int = 50,
         cond: torch.Tensor = None,
-        cond_scale = None,
-    ) -> torch.Tensor:
+        cond_scale: Union[None, float] = None,
+        return_intermediate_results: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[np.ndarray]]]:
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):
@@ -268,9 +283,17 @@ class Diffuser(pl.LightningModule):
                 expense of slower inference.
             cond (`torch.Tensor`, *optional*):
                 The class condition to use for the generation.
+            cond_scale (`float`, *optional*):
+                The scale for classifier-free guidance. Ignored if `cond` is `None`. If set to `1.0`, the model will
+                not use classifier-free guidance.
+            return_intermediate_results (`bool`, *optional*, defaults to `False`):
+                Whether to return the intermediate latents and model outputs at each denoising step. If `True`, the function will return
+                a tuple of the final latents and a list of intermediate latents and a list of model outputs.
 
         Returns:
             `torch.Tensor`: The generated images.
+            If `return_intermediate_latents` is `True`, returns a tuple of the final latents and a list of intermediate
+            latents at each denoising step and a list of model outputs.
         """
         self.noise_scheduler.set_timesteps(num_inference_steps, device=self.device)
 
@@ -287,6 +310,10 @@ class Diffuser(pl.LightningModule):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
+        if return_intermediate_results:
+            intermediate_latents = []
+            model_outputs = []
+
         for t in tqdm(self.noise_scheduler.timesteps):
             # predict the noise residual
             if cond_scale is not None:
@@ -295,11 +322,16 @@ class Diffuser(pl.LightningModule):
                 model_output = self.denoiser_forward(self.ema_model, x=latents, t=t.expand(batch_size), y=cond, p=0.)
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.noise_scheduler.step(model_output=model_output, timestep=t, sample=latents, **extra_kwargs).prev_sample
+            if return_intermediate_results:
+                intermediate_latents.append(self.denormalize_fn(latents).detach().cpu().numpy())
+                model_outputs.append(model_output.detach().cpu().numpy())
 
         # denormalize the latents
         latents = self.denormalize_fn(latents)
-
-        return latents
+        if not return_intermediate_results:
+            return latents
+        else:
+            return latents, intermediate_latents, model_outputs
 
     @torch.no_grad()
     def sample(self,

@@ -168,25 +168,9 @@ class VQGAN(pl.LightningModule):
 
         print('Image and padding sizes: ', img_size, self.padding_sizes)
 
-        # TODO: comment out
-        # self.discriminator_iter_start = discriminator_iter_start
-        # self.gan_feat_weight = gan_feat_weight
-        # self.image_discriminator = NLayerDiscriminator(
-        #     image_channels, disc_channels, disc_layers, norm_layer=nn.BatchNorm2d)
-        # self.video_discriminator = NLayerDiscriminator3D(
-        #     image_channels, disc_channels, disc_layers, norm_layer=nn.BatchNorm3d)
-
-        # if disc_loss_type == 'vanilla':
-        #     self.disc_loss = vanilla_d_loss
-        # elif disc_loss_type == 'hinge':
-        #     self.disc_loss = hinge_d_loss
-
-        
-
-        # self.image_gan_weight = image_gan_weight
-        # self.video_gan_weight = video_gan_weight
-
-        # end comment out
+        self.discriminator_iter_start = discriminator_iter_start
+        if discriminator_iter_start >= 0:
+            self.setup_adversarial_training(discriminator_iter_start, gan_feat_weight, image_gan_weight, video_gan_weight, disc_channels, disc_layers, disc_loss_type)
 
         self.perceptual_model = LPIPS().eval()
         self.perceptual_weight = perceptual_weight
@@ -200,7 +184,21 @@ class VQGAN(pl.LightningModule):
         self.val_step_metric = []
 
         self.save_hyperparameters()
-        
+
+    def setup_adversarial_training(self, discriminator_iter_start, gan_feat_weight, image_gan_weight, video_gan_weight, disc_channels, disc_layers, disc_loss_type):
+        self.gan_feat_weight = gan_feat_weight
+        self.image_gan_weight = image_gan_weight
+        self.video_gan_weight = video_gan_weight
+
+        self.image_discriminator = NLayerDiscriminator(
+            self.image_channels, disc_channels, disc_layers, norm_layer=nn.BatchNorm2d)
+        self.video_discriminator = NLayerDiscriminator3D(
+            self.image_channels, disc_channels, disc_layers, norm_layer=nn.BatchNorm3d)
+
+        if disc_loss_type == 'vanilla':
+            self.disc_loss = vanilla_d_loss
+        elif disc_loss_type == 'hinge':
+            self.disc_loss = hinge_d_loss
 
     def encode(self, x, include_embeddings=False, quantize=True):
         x, _ = pad_to_multiple(x, self.downsample)

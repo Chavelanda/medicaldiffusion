@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from vq_gan_3d.model.vqgan import VQGAN, crop_to_original, pad_to_multiple, SamePadConvTranspose3d, SamePadConv3d, silu, SiLU, Normalize, ResBlock
-from vq_gan_3d.utils import shift_dim
+from vq_gan_3d.utils import adopt_weight, shift_dim
 
 
 class VQVAEUpsampling(VQGAN):
@@ -118,7 +118,7 @@ class VQVAEUpsampling(VQGAN):
             else:
                 self.idx_1 = self.idx_0 + 1
                 self.idx_2 = self.idx_0 + 2
-                self.idx_3 = self.idx_0
+                self.idx_3 = self.idx_0 + 1
                 self.idx_4 = self.idx_0 + 3
                 
         print(f'Indices set to: {self.idx_0} - {self.idx_1} - {self.idx_2} - {self.idx_3} - {self.idx_4}')
@@ -318,13 +318,13 @@ class VQVAEUpsampling(VQGAN):
         # Still VQ-VAE loss
         losses[f'{name}/perceptual_loss'] = self.perceptual_loss(frames, frames_recon)
 
-        return x_recon, losses, (frames[0].detach().cpu(), frames_recon[0].detach().cpu())
+        return x_recon, losses, (frames, frames_recon)
     
     def on_train_epoch_start(self):
         # Fix optimizer state
         if self.model_parallelism:
             print('Fixing optimizer state to have right device')
-            opt = self.optimizers()
+            opt, _ = self.optimizers()
 
             params = opt.optimizer.param_groups[0]['params']
 
@@ -342,7 +342,7 @@ class VQVAEUpsampling(VQGAN):
 
 
     def training_step(self, batch, batch_idx):
-        opt_ae = self.optimizers()
+        opt_ae, opt_disc = self.optimizers()
         
         x = batch['data']
         if self.architecture == 'base':
@@ -350,18 +350,36 @@ class VQVAEUpsampling(VQGAN):
         else:
             x_original = batch['data_original']
 
-        
-        _, losses, _ = self.forward(x, x_original, name='train', batch_idx=batch_idx)
+        x_recon, losses, (frames, frames_recon) = self.forward(x, x_original, name='train', batch_idx=batch_idx)
         
         # Losses VQ-VAE
         loss_ae = losses['train/recon_loss'] + losses['train/commitment_loss'] + losses['train/perceptual_loss']
         
+        # Generator loss
+        if self.discriminator_iter_start >= 0:
+            disc_factor = adopt_weight(self.global_step, threshold=self.discriminator_iter_start)
+            if disc_factor > 0:
+                pred_image_fake, pred_video_fake, losses[f'train/g_image_loss'], losses[f'train/g_video_loss'], losses[f'train/g_loss'] = self.dg_loss(x_recon, frames_recon, disc_factor)
+                losses[f'train/image_gan_feat_loss'], losses[f'train/video_gan_feat_loss'], losses[f'train/gan_feat_loss'] = self.gan_feat_loss(x_original, frames, pred_image_fake, pred_video_fake, disc_factor)
+                loss_ae += losses[f'train/g_loss'] + losses[f'train/gan_feat_loss']
+
         losses['train/loss_ae'] = loss_ae
 
         opt_ae.zero_grad()
         self.manual_backward(loss_ae)
         self.clip_gradients(opt_ae, self.gradient_clip_val)
         opt_ae.step()
+
+        # Discriminator loss (are there detatching errors?)
+        if self.discriminator_iter_start >= 0:
+            disc_factor = adopt_weight(self.global_step, threshold=self.discriminator_iter_start)
+            if disc_factor > 0:
+                _, _, _, _, losses[f'train_d/d_image_loss'], losses[f'train_d/d_video_loss'], losses[f'train_d/discloss'] = self.dd_loss(x_original, x_recon, frames, frames_recon, disc_factor)
+
+                opt_disc.zero_grad()
+                self.manual_backward(losses[f'train_d/discloss'])
+                self.clip_gradients(opt_disc, self.gradient_clip_val)
+                opt_disc.step()
             
         self.log_dict(losses, prog_bar=True, on_step=True, on_epoch=False, rank_zero_only=True)
 
@@ -381,14 +399,14 @@ class VQVAEUpsampling(VQGAN):
         # Log image
         if batch_idx == 0:
             key = 'samples' if dataloader_idx == 0 else f'dl{dataloader_idx}_samples'
-            self.logger.experiment.log({key: [wandb.Image(frames[0], caption='original'), wandb.Image(frames[1].to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
+            self.logger.experiment.log({key: [wandb.Image(frames[0][0].detach().cpu(), caption='original'), wandb.Image(frames[1][0].detach().cpu().to(torch.float32), caption='recon')], 'trainer/global_step': self.global_step})
         
         # Used just when validating with more datasets
         if dataloader_idx != 0:
             # Update keys
             losses = {f'dl{dataloader_idx}_{k}': v for k, v in losses.items()}
 
-        self.log_dict(losses, prog_bar=True, sync_dist=True, add_dataloader_idx=True)
+        self.log_dict(losses, prog_bar=True, sync_dist=True, add_dataloader_idx=False)
 
     def test_step(self, batch, batch_idx):
         x = batch['data']
@@ -406,12 +424,20 @@ class VQVAEUpsampling(VQGAN):
                                   list(self.codebook.parameters()),
                                   lr=lr, betas=(0.5, 0.9))
         
+        if self.discriminator_iter_start >= 0:
+            opt_disc = torch.optim.Adam(list(self.image_discriminator.parameters()) +
+                                        list(self.video_discriminator.parameters()),
+                                        lr=lr, betas=(0.5, 0.9))
+        else:
+            dummy_param = torch.nn.Parameter(torch.zeros(1), requires_grad=True)
+            opt_disc = torch.optim.Adam([dummy_param], lr=lr, betas=(0.5, 0.9))
+        
         # compute start factor to begin with base_lr
         start_factor = self.base_lr/lr
         ae_scheduler = {'scheduler': torch.optim.lr_scheduler.LinearLR(opt_ae, start_factor=start_factor, total_iters=5), 'name': 'warmup-ae'}
         plateau_scheduler = {'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(opt_ae, 'min', patience=20), 'name': 'plateau-ae'}
         
-        return [opt_ae], [ae_scheduler, plateau_scheduler] 
+        return [opt_ae, opt_disc], [ae_scheduler, plateau_scheduler] 
     
     def denormalize_noise(self, noise):
         noise = (((noise + 1.0) / 2.0) * (self.codebook.embeddings.max() - self.codebook.embeddings.min())) + self.codebook.embeddings.min()
@@ -464,9 +490,40 @@ if __name__ == '__main__':
             'w': 216,
         }
     }
-    cfg = OmegaConf.create(cfg_dict)
-
-    model = VQVAEUpsampling(cfg, 456, 352, 512, 'super')
+    model = VQVAEUpsampling(embedding_dim=8,
+                            n_codes=16384,
+                            n_hiddens=16,
+                            downsample=[4,4,4],
+                            image_channels=1,
+                            norm_type='group',
+                            padding_type='replicate',
+                            num_groups=16,
+                            no_random_restart=False,
+                            restart_thres=1.0,
+                            d=192,
+                            h=148,
+                            w=216,
+                            gan_feat_weight=1.0,
+                            disc_channels=64,
+                            disc_layers=3,
+                            disc_loss_type='hinge',
+                            image_gan_weight=1.0,
+                            video_gan_weight=1.0,
+                            perceptual_weight=1.0,
+                            l1_weight=1.0,
+                            gradient_clip_val=1.0,
+                            discriminator_iter_start=0,
+                            lr=1e-5,
+                            base_lr=1e-5, 
+                            original_d=456, 
+                            original_h=352, 
+                            original_w=512, 
+                            architecture='up', 
+                            architecture_down='base',
+                            model_parallelism=False,
+                            simple_architecture=False,
+                            noise_prob=0,)
+    
 
     summary(model, [(1, 192, 148, 216), (1, 456, 352, 512)], device='cpu', depth=10)
 

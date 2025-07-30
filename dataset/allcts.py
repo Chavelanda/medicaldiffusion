@@ -1,4 +1,6 @@
 import os
+from typing import List, Tuple, Union
+import mcubes
 
 import torch
 from torch.utils.data import Dataset
@@ -8,6 +10,31 @@ import numpy as np
 import nrrd
 
 from dataset.utils import show_item
+
+# shape (D, H, W)
+def build_mesh(voxels: np.ndarray, 
+               threshold: float = 0.5, 
+               name: str = 'mesh', 
+               output_folder: str = None, 
+               spacing: List[float] = [0.51, 0.51, 0.51], 
+               smooth: bool = False, 
+               rotate: bool = True, 
+               translate: Tuple[float] = (-89.229787, -110.144586, -101.11006)):
+    if rotate:
+        voxels = np.rot90(voxels, k=1, axes=(0,1))
+
+    if smooth:
+        voxels = mcubes.smooth(voxels, 'constrained')
+    
+    vertices, triangles = mcubes.marching_cubes(voxels, threshold)
+
+    # Scale the vertices according to the actual voxel spacing
+    vertices = vertices * np.array(spacing)
+
+    # translate the mesh
+    vertices = vertices + np.array(translate)
+
+    mcubes.export_obj(vertices, triangles, os.path.join(output_folder, name + '.obj'))
 
 
 class AllCTsDataset(Dataset):
@@ -126,7 +153,11 @@ class AllCTsDataset(Dataset):
         return [name, split, cond_name]
     
     @staticmethod
-    def save(item_name, item, save_path, binarize=True):
+    def save(item_name: str, 
+             item: Union[torch.Tensor, np.ndarray], 
+             save_path: str, 
+             binarize: bool = True):
+        
         # Transform the item to numpy array
         if isinstance(item, torch.Tensor):
             item = item.to('cpu')

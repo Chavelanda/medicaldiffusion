@@ -9,7 +9,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar, Learni
 import torch
 from torch.utils.data import DataLoader
 
-from vq_gan_3d.model.vqvae_upsampling_noisy_decoder import VQVAEUpsamplingNoisyDecoder
+from vq_gan_3d.model.vqvae_upsampling_noisy_decoder import VQVAEUpsampling
 from dataset.get_dataset import get_dataset
 
 
@@ -63,9 +63,9 @@ def run(cfg: DictConfig):
     assert ckpt_path is not None, 'Please provide a checkpoint path to train the noisy decoder'
     assert os.path.isfile(ckpt_path), f'{ckpt_path} is not a checkpoint file!'
     if cfg.model.resume:
-        model = VQVAEUpsamplingNoisyDecoder.load_from_checkpoint(ckpt_path)
+        model = VQVAEUpsampling.load_from_checkpoint(ckpt_path)
     else:
-        model = VQVAEUpsamplingNoisyDecoder.load_from_checkpoint(ckpt_path, variance=cfg.model.variance)
+        model = VQVAEUpsampling.load_from_checkpoint(ckpt_path, variance=cfg.model.variance)
         ckpt_path = None
 
     

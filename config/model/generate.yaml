@@ -17,6 +17,10 @@ name_prefix:  # The prefix for the name of the output files.
 
 n_samples: 10 # The number of samples to generate.
 
+save_encodings: False # If True encodings will be saved to data/run_name/encodings
+load_encodings:  # path to encodings to load from. If None, encodings will be generated.
+ae_path: # Path to autoencoder to change it from the automatically loaded one (used for noisy decoder)
+
 # Filtered generation parameters (1 for normal generation)
 m: 1      # How many latents are generated to get the farthest 
 train_latents: # Path to training latents

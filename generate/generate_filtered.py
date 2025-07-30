@@ -1,15 +1,18 @@
 import os
+import gc
 import csv
 from collections import OrderedDict
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import numpy as np
+import pandas as pd
 
 from tqdm import tqdm
 import wandb
 import torch
 from diffusers import DDPMScheduler
 
+from vq_gan_3d.model.vqvae_upsampling import VQVAEUpsampling
 from ddpm import Diffuser
 from dataset.get_dataset import get_dataset
 
@@ -40,12 +43,15 @@ def run(cfg: DictConfig):
         cond_scale = cfg.model.cond_scale
         print(f'Random class: {random}')     
 
-    # Define noise scheduler for inference
-    noise_scheduler_class = DDPMScheduler
-
-    diffuser = Diffuser.load_from_checkpoint(cfg.model.milestone, noise_scheduler_class=noise_scheduler_class)
+    diffuser = Diffuser.load_from_checkpoint(cfg.model.milestone)
     diffuser.eval()
     diffuser = diffuser.to(device)
+
+    if cfg.model.ae_path is not None:
+        v = VQVAEUpsampling.load_from_checkpoint(cfg.model.ae_path, map_location=device, strict=False)
+        diffuser.vqvae = v
+        diffuser.vqvae.eval()
+        diffuser.vqvae.freeze() 
   
     # Create metadata csv if not existing
     name_prefix = cfg.model.name_prefix if cfg.model.name_prefix else ''
@@ -61,6 +67,14 @@ def run(cfg: DictConfig):
     n_samples = cfg.model.n_samples
     batch_size = cfg.model.batch_size
     steps = n_samples // batch_size
+
+    save_encodings = cfg.model.save_encodings
+    load_encodings = cfg.model.load_encodings
+    assert not (save_encodings and load_encodings is not None), "You cannot save and load encodings at the same time!"
+    if save_encodings:
+        gen_encodings_path = os.path.join(cfg.model.data_folder, 'encodings')
+        if not os.path.exists(gen_encodings_path):
+            os.makedirs(gen_encodings_path)
 
     # Set up filtered generation
     m = cfg.model.m
@@ -82,60 +96,107 @@ def run(cfg: DictConfig):
     print(f'Generated last step, last step batch size: {n_samples - (steps - 1)*ex_step}, {last_cond}')
     print(f'Generating for class idx {class_idx}')
     print(f'Generating with conditional scale {cond_scale}')
+    print(f'Save encodings: {save_encodings}, load encodings: {load_encodings}')
     
-    with torch.no_grad():
-        for i in tqdm(range(steps), desc='Generating samples'):
-            if i == steps - 1:
-                batch_size = last_cond
+    if not load_encodings:
+        with torch.no_grad():
+            for i in tqdm(range(steps), desc='Generating samples'):
+                if i == steps - 1:
+                    batch_size = last_cond
 
-            cond = ds.get_cond(batch_size=batch_size, random=random, class_idx=class_idx).to(device) if conditioned else None
-           
-            # Generate bs latents
-            latents = diffuser.sample_latent(batch_size=batch_size, num_inference_steps=cfg.model.timesteps, cond=cond, cond_scale=cond_scale)
-
-            d, h, w = latents.shape[-3:]
-            # Quantize latents
-            vq_output = diffuser.vqvae.codebook(latents)
-            latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, d, h, w))
-
-            if m > 1:
-                # Compute distance with train latents
-                distance_matrix = torch.cdist(latents, train_latents, p=2.0, compute_mode='use_mm_for_euclid_dist_if_necessary')
-
-                # # FARE MAESTRIE PER CAPIRE DI CHE QS SONO I NEAREST LATENTS
-                # print('WOOOOOOOOOOOOOOOO')
-                # print('Shape latents ', latents.shape)
-                # print('Shape distance matrix ', distance_matrix.shape)
-                # print('shape index min ', torch.argmin(distance_matrix, axis=1).shape)
-                # min_distance_matrix = torch.min(distance_matrix, axis=1)
-                # print('Min distance tuple ', min_distance_matrix)
-                # sorted_idx = torch.argsort(min_distance_matrix[0])
-                # print('Sorted idx for min distance tuple ', sorted_idx)
-                # sorted_min_distance_indexes = min_distance_matrix[1][sorted_idx]
-                # print('Sorted min distance indexes ', sorted_min_distance_indexes)
-
-                # dataset = AllCTsDataset(
-                #     root_dir='./data/allcts-global-128/',
-                #     metadata_name='metadata.csv',
-                #     split='train-val',
-                #     binarize=True,
-                # )
-
-                # print(dataset.df.iloc[sorted_min_distance_indexes.cpu(), :])
-
-                # return None
-                # # FINITE MAESTRIE
-
-                # Select farthest latent every m samples
-                nn, _ = torch.min(distance_matrix.view((-1, m, train_latents.shape[0])), 2)
-                selected_idx = torch.argmax(nn, dim=1)
-            else:
-                selected_idx = 0
+                cond = ds.get_cond(batch_size=batch_size, random=random, class_idx=class_idx).to(device) if conditioned else None
             
-            encoding = encodings[torch.arange(encodings.shape[0]), selected_idx]
-            
+                gc.collect()
+                torch.cuda.empty_cache()
+
+                # Generate bs latents
+                latents = diffuser.sample_latent(batch_size=batch_size, num_inference_steps=cfg.model.timesteps, cond=cond, cond_scale=cond_scale)
+
+                d, h, w = latents.shape[-3:]
+                # Quantize latents
+                vq_output = diffuser.vqvae.codebook(latents)
+                latents, encodings = torch.flatten(vq_output['embeddings'], start_dim=1), vq_output['encodings'].view((-1, m, d, h, w))
+
+                if m > 1:
+                    # Compute distance with train latents
+                    distance_matrix = torch.cdist(latents, train_latents, p=2.0, compute_mode='use_mm_for_euclid_dist_if_necessary')
+
+                    # # FARE MAESTRIE PER CAPIRE DI CHE QS SONO I NEAREST LATENTS
+                    # print('WOOOOOOOOOOOOOOOO')
+                    # print('Shape latents ', latents.shape)
+                    # print('Shape distance matrix ', distance_matrix.shape)
+                    # print('shape index min ', torch.argmin(distance_matrix, axis=1).shape)
+                    # min_distance_matrix = torch.min(distance_matrix, axis=1)
+                    # print('Min distance tuple ', min_distance_matrix)
+                    # sorted_idx = torch.argsort(min_distance_matrix[0])
+                    # print('Sorted idx for min distance tuple ', sorted_idx)
+                    # sorted_min_distance_indexes = min_distance_matrix[1][sorted_idx]
+                    # print('Sorted min distance indexes ', sorted_min_distance_indexes)
+
+                    # dataset = AllCTsDataset(
+                    #     root_dir='./data/allcts-global-128/',
+                    #     metadata_name='metadata.csv',
+                    #     split='train-val',
+                    #     binarize=True,
+                    # )
+
+                    # print(dataset.df.iloc[sorted_min_distance_indexes.cpu(), :])
+
+                    # return None
+                    # # FINITE MAESTRIE
+
+                    # Select farthest latent every m samples
+                    nn, _ = torch.min(distance_matrix.view((-1, m, train_latents.shape[0])), 2)
+                    selected_idx = torch.argmax(nn, dim=1)
+                else:
+                    selected_idx = 0
+                
+                encoding = encodings[torch.arange(encodings.shape[0]), selected_idx]
+
+                # Decode the latent
+                samples = diffuser.vqvae.decode(encoding, quantize=False).cpu()
+
+                # Save the images
+                for j, sample in enumerate(samples):
+                    filename = f'{name_prefix}_{i*ex_step + j}'
+                    
+                    ds.save(filename, sample, cfg.model.data_folder)
+
+                    # Append metadata to csv
+                    with open(metadata_path, 'a', newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(ds.get_row(filename, 'train', cond[j].cpu()))
+
+                    if save_encodings:
+                        np.save(os.path.join(gen_encodings_path, filename), encoding[j].cpu().numpy())
+                        np.save(os.path.join(gen_encodings_path, filename + '_cond'), cond[j].cpu().numpy())
+
+                wandb.log({'step': i})
+    else:
+        # Get encodings from folder
+        encodings = []
+        conds = []
+
+        # Separate and sort filenames
+        encoding_files = sorted([f for f in os.listdir(load_encodings) if f.endswith('.npy') and not f.endswith('cond.npy')])
+        cond_files = sorted([f for f in os.listdir(load_encodings) if f.endswith('cond.npy')])
+
+        print(encoding_files, cond_files)
+
+        for filename in cond_files:
+            cond = np.load(os.path.join(load_encodings, filename))
+            conds.append(cond)
+        for filename in encoding_files:
+            encoding = np.load(os.path.join(load_encodings, filename))
+            encodings.append(encoding)
+
+        for i, encoding in tqdm(enumerate(encodings)):
+            encoding = torch.unsqueeze(torch.from_numpy(encoding).to(device), 0)
+
             # Decode the latent
             samples = diffuser.vqvae.decode(encoding, quantize=False).cpu()
+
+            cond = torch.unsqueeze(torch.from_numpy(conds[i]).to(device), 0)
 
             # Save the images
             for j, sample in enumerate(samples):
@@ -149,6 +210,7 @@ def run(cfg: DictConfig):
                     writer.writerow(ds.get_row(filename, 'train', cond[j].cpu()))
             
             wandb.log({'step': i})
+
     
 
 if __name__ == "__main__":

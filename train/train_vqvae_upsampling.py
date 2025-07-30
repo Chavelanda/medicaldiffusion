@@ -55,13 +55,12 @@ def run(cfg: DictConfig):
     callbacks = []
     callbacks.append(ModelCheckpoint(monitor='val/recon_loss',
                      save_top_k=1, mode='min', dirpath=base_dir, filename='best_val-{epoch}-{step}'))
-    if cfg.model.noise_prob > 0:
-        callbacks.append(ModelCheckpoint(monitor='dl1_val/recon_loss',
-                     save_top_k=1, mode='min', dirpath=base_dir, filename='best_noisy_val-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_epochs=30, save_top_k=-1,
+    every_n_epochs = 1 if cfg.model.noise_prob > 0 else 30
+    callbacks.append(ModelCheckpoint(every_n_epochs=every_n_epochs, save_top_k=-1,
                      dirpath=base_dir, filename='train-{epoch}-{step}'))
-    callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
-                     dirpath=base_dir, filename='last-{epoch}-{step}'))
+    if every_n_epochs != 1:
+        callbacks.append(ModelCheckpoint(every_n_epochs=1, save_top_k=1,
+                            dirpath=base_dir, filename='last-{epoch}-{step}'))
     # progress bar callback
     callbacks.append(TQDMProgressBar(refresh_rate=50))
     # log lr callback
